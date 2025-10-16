@@ -10,7 +10,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Build the image if it doesn't exist
 if [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
   echo "Building Docker image (first run only)..."
-  docker build -t claude-yolo:latest "$SCRIPT_DIR"
+  if ! docker build -t claude-yolo:latest "$SCRIPT_DIR"; then
+    echo "Error: Docker build failed. Please check the error messages above."
+    exit 1
+  fi
+  echo "Build complete!"
 fi
 
 # Run the container
