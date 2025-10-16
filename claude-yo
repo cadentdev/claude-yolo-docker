@@ -6,6 +6,14 @@ GROUPID=$(id -g)
 USERNAME=$(whoami)
 MOUNTDIR=$(pwd)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLAUDE_DIR="$HOME/.claude"
+
+# Verify credentials exist on host before starting
+if [ ! -f "$CLAUDE_DIR/.credentials.json" ]; then
+  echo "Error: No Claude credentials found at $CLAUDE_DIR/.credentials.json"
+  echo "Please run 'claude login' on your host machine first."
+  exit 1
+fi
 
 # Build the image if it doesn't exist
 if [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
@@ -20,20 +28,60 @@ fi
 # Run the container
 docker run \
   -v "$MOUNTDIR":/workspace \
-  -v ~/.claude:/tmp/.claude-host:ro \
+  -v "$CLAUDE_DIR":/tmp/.claude-host:ro \
   -it \
   --rm \
   claude-yolo:latest \
   /bin/bash -c "
-    # Create group and user with matching IDs
-    groupadd -g $GROUPID $USERNAME 2>/dev/null || true
-    useradd -u $USERID -g $GROUPID -m -s /bin/bash $USERNAME 2>/dev/null || true
+    # Find if a user with our UID already exists
+    EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
     
-    # Copy credentials to user's home
-    mkdir -p /home/$USERNAME/.claude
-    cp -r /tmp/.claude-host/* /home/$USERNAME/.claude/ 2>/dev/null || true
-    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
+    if [ -n \"\$EXISTING_USER\" ]; then
+      CONTAINER_USER=\$EXISTING_USER
+    else
+      CONTAINER_USER=$USERNAME
+      groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
+      useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
+    fi
     
-    # Run claude as the user
-    su - $USERNAME -c 'cd /workspace && claude --dangerously-skip-permissions'
+    # Copy credentials to container user's home
+    mkdir -p /home/\$CONTAINER_USER/.claude
+    cp -r /tmp/.claude-host/. /home/\$CONTAINER_USER/.claude/
+    chown -R $USERID:$GROUPID /home/\$CONTAINER_USER/.claude
+
+    # Display setup information
+    echo \"═══════════════════════════════════════════════════════════════\"
+    echo \"Container Setup Complete\"
+    echo \"═══════════════════════════════════════════════════════════════\"
+    echo \"Container user:      \$CONTAINER_USER\"
+    echo \"UID:GID:             $USERID:$GROUPID\"
+    echo \"Working directory:   $MOUNTDIR\"
+    echo \"                     → mounted at /workspace\"
+    echo \"\"
+    echo \"Credentials:         \$(ls -1 /tmp/.claude-host 2>/dev/null | wc -l) files mounted from host\"
+    
+    # Verify critical credential file
+    if [ -f /home/\$CONTAINER_USER/.claude/.credentials.json ]; then
+      echo \"                     ✓ .credentials.json copied successfully\"
+    else
+      echo \"                     ✗ WARNING: .credentials.json not found\"
+    fi
+    
+    echo \"═══════════════════════════════════════════════════════════════\"
+    echo \"\"
+    echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
+    read
+
+    # Run claude as the determined user, then drop to shell for debugging
+    su - \$CONTAINER_USER -c '
+      cd /workspace
+      claude --dangerously-skip-permissions
+      echo \"\"
+      echo \"═══════════════════════════════════════════════════════════════\"
+      echo \"Claude exited. You are still in the container for debugging.\"
+      echo \"Try: ls -la ~/.claude\"
+      echo \"Type exit to leave the container.\"
+      echo \"═══════════════════════════════════════════════════════════════\"
+      exec bash
+    '
   "

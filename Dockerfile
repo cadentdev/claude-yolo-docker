@@ -1,7 +1,7 @@
 FROM node:20-bookworm-slim
 
 # Install Claude Code globally
-RUN npm install -g @anthropics/claude-code
+RUN npm install -g @anthropic-ai/claude-code
 
 # Set working directory where projects will be mounted
 WORKDIR /workspace

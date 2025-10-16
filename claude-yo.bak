@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Get host user info
+USERID=$(id -u)
+GROUPID=$(id -g)
+USERNAME=$(whoami)
+MOUNTDIR=$(pwd)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Build the image if it doesn't exist
+if [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
+  echo "Building Docker image (first run only)..."
+  if ! docker build -t claude-yolo:latest "$SCRIPT_DIR"; then
+    echo "Error: Docker build failed. Please check the error messages above."
+    exit 1
+  fi
+  echo "Build complete!"
+fi
+
+# Run the container
+docker run \
+  -v "$MOUNTDIR":/workspace \
+  -v ~/.claude:/tmp/.claude-host:ro \
+  -it \
+  --rm \
+  claude-yolo:latest \
+  /bin/bash -c "
+    # Create group and user with matching IDs
+    groupadd -g $GROUPID $USERNAME 2>/dev/null || true
+    useradd -u $USERID -g $GROUPID -m -s /bin/bash $USERNAME 2>/dev/null || true
+    
+    # Copy credentials to user's home
+    mkdir -p /home/$USERNAME/.claude
+    cp -r /tmp/.claude-host/* /home/$USERNAME/.claude/ 2>/dev/null || true
+    chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
+    
+    # Run claude as the user
+    su - $USERNAME -c 'cd /workspace && claude --dangerously-skip-permissions'
+  "
