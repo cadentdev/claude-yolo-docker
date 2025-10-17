@@ -1,5 +1,34 @@
 #!/bin/bash
 
+# Parse arguments
+REBUILD=false
+for arg in "$@"; do
+  case $arg in
+    -h|--help)
+      echo "Usage: claude-yo [OPTIONS]"
+      echo ""
+      echo "Run Claude Code in an isolated Docker container with YOLO mode enabled."
+      echo ""
+      echo "Options:"
+      echo "  -r, --rebuild    Force rebuild of Docker image from scratch (clears cache)"
+      echo "  -h, --help       Display this help message"
+      echo ""
+      echo "The container will mount your current directory as the workspace."
+      echo "Authentication data persists across runs in a Docker volume."
+      exit 0
+      ;;
+    -r|--rebuild)
+      REBUILD=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $arg"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+done
+
 # Get host user info
 USERID=$(id -u)
 GROUPID=$(id -g)
@@ -7,8 +36,17 @@ USERNAME=$(whoami)
 MOUNTDIR=$(pwd)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Build the image if it doesn't exist
-if [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
+# Handle rebuild or normal build
+if [ "$REBUILD" = true ]; then
+  echo "Removing existing image..."
+  docker rmi claude-yolo:latest 2>/dev/null || true
+  echo "Building image from scratch (no cache)..."
+  if ! docker build --no-cache -t claude-yolo:latest "$SCRIPT_DIR"; then
+    echo "Error: Docker build failed. Please check the error messages above."
+    exit 1
+  fi
+  echo "Build complete!"
+elif [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
   echo "Building Docker image (first run only)..."
   if ! docker build -t claude-yolo:latest "$SCRIPT_DIR"; then
     echo "Error: Docker build failed. Please check the error messages above."

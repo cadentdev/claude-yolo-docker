@@ -46,6 +46,8 @@ source ~/.bashrc
 
 ## Usage
 
+### Basic Usage
+
 Navigate to your project directory and run:
 ```bash
 cd ~/my-project
@@ -61,6 +63,37 @@ claude-yo
 On first run, you'll be prompted to authenticate with your Claude account. After that, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
 
 When you exit Claude (type `/exit`), you'll drop into a bash shell inside the container for debugging. Type `exit` again to leave the container.
+
+### Command-Line Options
+
+**Display help:**
+```bash
+claude-yo --help
+# or
+claude-yo -h
+```
+
+**Force rebuild (update Claude Code or start fresh):**
+```bash
+claude-yo --rebuild
+# or
+claude-yo -r
+```
+
+The `--rebuild` flag will:
+- Remove the existing Docker image
+- Rebuild from scratch without using cache
+- Install the latest version of Claude Code
+- Preserve your authentication (no need to log in again)
+
+### Updating Claude Code
+
+To get the latest version of Claude Code, simply rebuild the Docker image:
+```bash
+claude-yo --rebuild
+```
+
+This is the recommended way to update Claude Code, as it ensures you're always running the latest version in a clean environment.
 
 ## How It Works
 
@@ -98,6 +131,11 @@ The container provides isolation, but Claude still has unrestricted access to wh
 **Inspect persistent data**: View the volume contents with:
 ```bash
 docker volume inspect claude-yolo-home
+```
+
+**Need to update Claude Code?**: Use the `--rebuild` flag to rebuild the image and get the latest version:
+```bash
+claude-yo --rebuild
 ```
 
 ## Learning Resources
