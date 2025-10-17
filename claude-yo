@@ -6,14 +6,6 @@ GROUPID=$(id -g)
 USERNAME=$(whoami)
 MOUNTDIR=$(pwd)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CLAUDE_DIR="$HOME/.claude"
-
-# Verify credentials exist on host before starting
-if [ ! -f "$CLAUDE_DIR/.credentials.json" ]; then
-  echo "Error: No Claude credentials found at $CLAUDE_DIR/.credentials.json"
-  echo "Please run 'claude login' on your host machine first."
-  exit 1
-fi
 
 # Build the image if it doesn't exist
 if [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
@@ -28,7 +20,7 @@ fi
 # Run the container
 docker run \
   -v "$MOUNTDIR":/workspace \
-  -v "$CLAUDE_DIR":/tmp/.claude-host:ro \
+  -v claude-yolo-home:/home-persist \
   -it \
   --rm \
   claude-yolo:latest \
@@ -44,10 +36,10 @@ docker run \
       useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
     fi
     
-    # Copy credentials to container user's home
-    mkdir -p /home/\$CONTAINER_USER/.claude
-    cp -r /tmp/.claude-host/. /home/\$CONTAINER_USER/.claude/
-    chown -R $USERID:$GROUPID /home/\$CONTAINER_USER/.claude
+    # Restore home directory from persistent volume if it exists
+    if [ -d /home-persist/\$CONTAINER_USER ]; then
+      cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
+    fi
 
     # Display setup information
     echo \"═══════════════════════════════════════════════════════════════\"
@@ -57,16 +49,6 @@ docker run \
     echo \"UID:GID:             $USERID:$GROUPID\"
     echo \"Working directory:   $MOUNTDIR\"
     echo \"                     → mounted at /workspace\"
-    echo \"\"
-    echo \"Credentials:         \$(ls -1 /tmp/.claude-host 2>/dev/null | wc -l) files mounted from host\"
-    
-    # Verify critical credential file
-    if [ -f /home/\$CONTAINER_USER/.claude/.credentials.json ]; then
-      echo \"                     ✓ .credentials.json copied successfully\"
-    else
-      echo \"                     ✗ WARNING: .credentials.json not found\"
-    fi
-    
     echo \"═══════════════════════════════════════════════════════════════\"
     echo \"\"
     echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
@@ -79,9 +61,12 @@ docker run \
       echo \"\"
       echo \"═══════════════════════════════════════════════════════════════\"
       echo \"Claude exited. You are still in the container for debugging.\"
-      echo \"Try: ls -la ~/.claude\"
       echo \"Type exit to leave the container.\"
       echo \"═══════════════════════════════════════════════════════════════\"
-      exec bash
+      exec bash -i
     '
+    
+    # Save home directory to persistent volume (runs as root after shell exits)
+    mkdir -p /home-persist/\$CONTAINER_USER
+    cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
   "
