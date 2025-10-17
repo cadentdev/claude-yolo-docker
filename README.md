@@ -10,15 +10,16 @@ This project creates a safe, isolated Docker container for running Claude Code i
 
 - **Isolation**: Claude Code runs in a Docker container, not directly on your host
 - **Directory Mounting**: Only your current directory is accessible to Claude
-- **Authentication Passthrough**: Your `~/.claude` credentials are mounted (read-only)
+- **Persistent Authentication**: Auth tokens stored in a Docker volume, shared across all projects
 - **User Mapping**: Files created by Claude maintain your user ownership
 - **Interactive Mode**: Drop directly into Claude Code's CLI prompt
+- **Debug Shell**: Access container shell after Claude exits for troubleshooting
 
 ## Prerequisites
 
 - Docker installed and running
-- Claude Code authentication set up (`claude login` on your host machine)
 - Bash shell
+- Claude account (you'll authenticate in-container on first run)
 
 ## Installation
 
@@ -57,7 +58,9 @@ cd ~/my-project
 claude-yo
 ```
 
-You'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
+On first run, you'll be prompted to authenticate with your Claude account. After that, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
+
+When you exit Claude (type `/exit`), you'll drop into a bash shell inside the container for debugging. Type `exit` again to leave the container.
 
 ## How It Works
 
@@ -65,9 +68,11 @@ You'll be dropped directly into Claude Code's interactive prompt where you can t
 2. It builds a Docker image (first run only) with Node.js and Claude Code installed
 3. It starts a container that:
    - Mounts your current directory to `/workspace`
-   - Mounts your `~/.claude` credentials (read-only)
+   - Mounts a persistent Docker volume for authentication data
    - Creates a user inside the container matching your host UID/GID
+   - Restores authentication from previous sessions (if available)
    - Runs `claude --dangerously-skip-permissions` as that user
+   - Saves authentication data back to the volume when you exit
 
 ## Important Security Notes
 
@@ -84,9 +89,16 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 **Image won't build**: Check that Docker is running and you have internet access for npm packages.
 
-**Authentication fails**: Make sure you've run `claude login` on your host machine and `~/.claude` exists.
+**Authentication not persisting**: The auth data is stored in a Docker volume named `claude-yolo-home`. Check it exists with `docker volume ls`. To reset authentication, remove the volume: `docker volume rm claude-yolo-home`
 
 **Permission errors**: The script automatically matches your UID/GID, but if you still see issues, check Docker permissions.
+
+**Terminal warnings**: You may see "cannot set terminal process group" warnings when dropping to the debug shell. These are harmless and don't affect functionality.
+
+**Inspect persistent data**: View the volume contents with:
+```bash
+docker volume inspect claude-yolo-home
+```
 
 ## Learning Resources
 
