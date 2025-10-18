@@ -13,8 +13,9 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - **Persistent Authentication**: Auth tokens stored in a Docker volume, shared across all projects
 - **User Mapping**: Files created by Claude maintain your user ownership
 - **Interactive Mode**: Drop directly into Claude Code's CLI prompt
-- **Debug Shell**: Access container shell after Claude exits for troubleshooting
+- **Debug Mode**: Optional persistent shell access after Claude exits for exploration and troubleshooting
 - **Session Logging**: Automatic logging of all sessions with verbose mode for full capture
+- **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing)
 
 ## Prerequisites
 
@@ -66,7 +67,9 @@ On first run, you'll be prompted to authenticate with your Claude account. **Not
 
 After authentication, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
 
-When you exit Claude (type `/exit`), you'll drop into a bash shell inside the container for debugging. Type `exit` again to leave the container.
+**Default behavior**: When you exit Claude (type `/exit`), the container exits immediately and returns you to your host shell.
+
+**Debug mode** (`--debug`): When you exit Claude, you'll drop into a persistent bash shell inside the container for exploration. Type `exit` to save your authentication data and leave the container.
 
 ### Command-Line Options
 
@@ -103,10 +106,54 @@ The `--verbose` flag will:
 - Create larger log files useful for debugging issues
 - Use the `script` command to capture terminal output with ANSI codes
 
-**Combine flags:**
+**Enable debug mode (persistent container shell):**
 ```bash
-claude-yo --rebuild --verbose  # Rebuild and run with verbose logging
+claude-yo --debug
+# or
+claude-yo -d
 ```
+
+The `--debug` flag will:
+- Show a "Press Enter" prompt before starting Claude (time to review container setup)
+- Keep the container shell running after Claude exits
+- Allow you to explore the container, test commands, or inspect files
+- Save authentication data when you type `exit` to leave
+
+**Combine flags for different workflows:**
+```bash
+# Fast workflow (default)
+claude-yo
+
+# Full session logging (for review/debugging)
+claude-yo --verbose
+
+# Persistent shell for exploration
+claude-yo --debug
+
+# Persistent shell + full logging (complete audit trail)
+claude-yo --debug --verbose
+
+# Rebuild with any mode
+claude-yo --rebuild --debug
+```
+
+### Workflow Modes
+
+The `--debug` and `--verbose` flags control two independent aspects of `claude-yo`:
+
+| Mode | Flags | Press Enter | Exit Behavior | Logging | Use Case |
+|------|-------|-------------|---------------|---------|----------|
+| **Fast** | (none) | ❌ No | Immediate exit | Wrapper only | Production workflow |
+| **Verbose** | `--verbose` | ✅ Yes | Immediate exit | Full session | Review/debugging |
+| **Debug** | `--debug` | ✅ Yes | Persistent shell | Wrapper only | Interactive exploration |
+| **Debug + Verbose** | `--debug --verbose` | ✅ Yes | Persistent shell | Full session | Complete audit trail |
+
+**When to use each mode:**
+
+- **Fast (default)**: Day-to-day development. Quick startup, clean exit.
+- **Verbose**: When you need to review Claude's changes or debug issues. Creates complete session logs.
+- **Debug**: When you want to explore the container, test commands, or inspect file changes before exiting.
+- **Debug + Verbose**: When you need both exploration and a complete log for debugging complex issues.
 
 ### Updating Claude Code
 
@@ -141,18 +188,20 @@ Each session creates a timestamped log file: `claude-yolo-YYYY-MM-DD-HHMMSS.log`
 
 ### Default Mode (Fast & Clean)
 
-By default, `claude-yo` logs only wrapper script operations:
+By default (without `--verbose`), `claude-yo` logs only wrapper script operations:
 - Build output (when building or rebuilding the Docker image)
 - Container setup information (user, UID/GID, working directory)
 - Error messages from the script or Docker
 - **Does NOT log** Claude Code session output or debug shell commands
+
+This applies to both normal mode and `--debug` mode (unless combined with `--verbose`).
 
 **Benefits:**
 - Small, readable log files (~10-15 lines typically)
 - Easy to review build errors or script issues
 - Container setup info for debugging UID/permission issues
 - Minimal disk space usage
-- Faster startup (no "Press Enter" prompt)
+- Fast workflow (no "Press Enter" prompt in default mode)
 
 **Example log contents:**
 ```
@@ -171,19 +220,24 @@ Working directory:   /home/user/my-project
 
 Run with `--verbose` to capture everything:
 ```bash
+# Verbose mode (immediate exit after Claude)
 claude-yo --verbose
+
+# Verbose + Debug mode (persistent shell + full logging)
+claude-yo --debug --verbose
 ```
 
 **What gets logged:**
 - Everything from default mode
 - Full Claude Code session output (all messages, responses, file changes)
-- Debug shell commands and output
+- Debug shell commands and output (if using `--debug --verbose`)
 - Terminal control sequences and ANSI color codes
 
 **Benefits:**
 - Complete session trace for debugging
 - Reproduce what happened during a Claude session
 - Share logs with others for troubleshooting
+- With `--debug --verbose`, captures everything including exploration commands
 
 **Trade-offs:**
 - Large log files (can be thousands of lines)

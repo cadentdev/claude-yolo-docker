@@ -1,0 +1,1534 @@
+
+╭─── Claude Code v2.0.22 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                   │ Tips for getting started                                                                    │
+│             Welcome back Neil Johnson!            │ ✔ Run /init to create a CLAUDE.md file with instructions for Claude                         │
+│                                                   │ ───────────────────────────────────────────────────────────────────                         │
+│                      ▐▛███▜▌                      │ Recent activity                                                                             │
+│                     ▝▜█████▛▘                     │ No recent activity                                                                          │
+│                       ▘▘ ▝▝                       │                                                                                             │
+│                                                   │                                                                                             │
+│              Sonnet 4.5 · Claude Pro              │                                                                                             │
+│   /home/neil/Repos/cadentdev/claude-yolo-docker   │                                                                                             │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+> /clear 
+  ⎿  (no content)
+
+> Let's create a plan to implment the next item under **claude-yo** in @TASKS.md -- please **overwrite** the contents of @PLAN.md with your new
+ plan for the debug feature 
+  ⎿  Read TASKS.md (30 lines)
+  ⎿  Read PLAN.md (326 lines)
+
+● I'll read the current TASKS.md to understand the next item, then create a new plan for the debug feature.
+
+● Read(claude-yo)
+  ⎿  Read 276 lines
+
+● Now I'll create a comprehensive plan for the debug feature and overwrite PLAN.md:
+
+● Write(PLAN.md)
+  ⎿  Updated PLAN.md with 361 additions and 239 removals                                                                                    
+         1 -  # Plan: Write Script Output to Log File
+         1 +  # Plan: Add Debug Mode (`-d` or `--debug`)
+         2    
+         3    ## Task Overview
+         4 -  Implement logging for the `claude-yo` wrapper script to capture wrapper script output to a log file while also displaying it 
+           - in the console. Full Docker session capture is available via the `--verbose` flag.
+         4 +  Implement a debug mode that gives users more control over the container lifecycle and allows shell access after Claude Code 
+           + exits. This complements the existing default and verbose modes.
+         5    
+         6    ## Current Behavior
+         7 -  - All script output goes directly to stdout/stderr
+         8 -  - No persistent record of sessions
+         9 -  - Debugging requires manually re-running and capturing output
+         7    
+         8 -  ## Desired Behavior (REVISED after user testing)
+         9 -  
+         8    ### Default Mode (no flags)
+         9 -  - Log **only wrapper script messages** to timestamped log file
+        10 -  - Skip "Press Enter" prompt for faster workflow
+        11 -  - **Do not** capture Docker session (Claude Code output)
+        12 -  - Small, readable log files focused on script operations
+         9 +  - Container setup displays immediately
+        10 +  - Claude Code starts automatically (no "Press Enter" prompt)
+        11 +  - After Claude exits, user drops to debug shell
+        12 +  - **Issue**: Exiting the debug shell returns to host shell (container removed)
+        13    
+        14 -  ### Verbose Mode (`--verbose` flag)
+        15 -  - Log wrapper script messages **and** full Docker session
+        16 -  - Include "Press Enter" prompt to give user time to review setup
+        17 -  - Capture everything including Claude Code output and debug shell
+        18 -  - Large log files useful for debugging
+        14 +  ### Verbose Mode (`--verbose`)
+        15 +  - Shows "Press Enter" prompt before starting Claude
+        16 +  - Captures full session with `script` command
+        17 +  - After Claude exits, user drops to debug shell
+        18 +  - **Same issue**: Exiting the debug shell returns to host shell
+        19    
+        20 -  **Rationale for change:**
+        21 -  - Default Docker session logs are massive (thousands of lines with ANSI codes)
+        22 -  - Terminal control sequences make logs hard to read
+        23 -  - User already sees Claude output in their terminal
+        24 -  - Script messages (build status, errors) are what need persistence
+        25 -  - Power users can opt into full capture when debugging
+        20 +  ## Desired Behavior
+        21    
+        22 -  ## Design Decisions
+        22 +  ### Debug Mode (`--debug`)
+        23 +  The debug mode should provide maximum control and inspection capability:
+        24    
+        25 -  ### Log File Location
+        26 -  **Option 1: Store in repository directory** (`./logs/`)
+        27 -  - ✅ Easy to find alongside the script
+        28 -  - ✅ Gitignore can exclude them
+        29 -  - ❌ Pollutes project directory
+        30 -  - ❌ Logs mix with code
+        25 +  1. **Manual entry**: Show "Press Enter" prompt (like verbose mode)
+        26 +     - Gives user time to review container setup
+        27 +     - User explicitly chooses when to start Claude
+        28    
+        29 -  **Option 2: Store in user's home directory** (`~/.claude-yolo/logs/`)
+        30 -  - ✅ Cleaner separation of concerns
+        31 -  - ✅ Centralized location for all projects
+        32 -  - ✅ Follows Unix conventions
+        33 -  - ❌ Slightly harder to discover
+        29 +  2. **Shell persistence**: After Claude exits, stay in container shell
+        30 +     - User can inspect state, test commands, debug issues
+        31 +     - Container persists until user explicitly types `exit`
+        32 +     - **Key difference**: Normal modes would auto-exit after Claude, debug mode keeps shell
+        33    
+        34 -  **Recommendation: Option 2** - Store in `~/.claude-yolo/logs/`
+        34 +  3. **No automatic logging**: Debug mode is for interactive exploration
+        35 +     - No session logging (user is actively watching)
+        36 +     - Console output only
+        37    
+        38 -  ### Log File Naming
+        39 -  Format: `claude-yolo-YYYY-MM-DD-HHMMSS.log`
+        38 +  4. **Clear messaging**: User understands they're in control
+        39 +     - Clear prompts explaining what happens next
+        40 +     - Explicit instructions on how to exit
+        41    
+        42 -  Example: `claude-yolo-2025-10-17-143522.log`
+        42 +  ### Relationship to Other Modes
+        43    
+        44 -  **Rationale:**
+        45 -  - ISO 8601-ish date format sorts chronologically
+        46 -  - Includes time to allow multiple runs per day
+        47 -  - Descriptive prefix identifies the tool
+        48 -  - No special characters that cause shell escaping issues
+        44 +  | Feature | Default | Verbose | Debug |
+        45 +  |---------|---------|---------|-------|
+        46 +  | "Press Enter" prompt | ❌ No (fast) | ✅ Yes | ✅ Yes |
+        47 +  | Session logging | Wrapper only | Full session | ❌ None |
+        48 +  | Debug shell after Claude | ✅ Yes | ✅ Yes | ✅ Yes |
+        49 +  | Auto-exit on shell exit | ✅ Yes | ✅ Yes | ❌ No (persist) |
+        50 +  | Use case | Production | Debugging logs | Live debugging |
+        51    
+        52 -  ### What to Log
+        52 +  **Note**: The "auto-exit on shell exit" distinction is the **main behavioral difference** for debug mode.
+        53    
+        54 -  **Default mode:**
+        55 -  1. Build output (if triggered) - both stdout and stderr
+        56 -  2. Container setup messages (UID, working directory, etc.)
+        57 -  3. Error messages from script or Docker
+        58 -  4. **NOT** Claude Code session output
+        59 -  5. **NOT** Debug shell session
+        54 +  ## Implementation Analysis
+        55    
+        56 -  **Verbose mode (`--verbose`):**
+        57 -  1. Everything from default mode
+        58 -  2. Full Docker session output (includes Claude Code)
+        59 -  3. Debug shell session (if user uses it)
+        60 -  4. All terminal control codes and ANSI sequences
+        56 +  ### Current Container Flow
+        57    
+        58 -  **Scope boundaries:**
+        59 -  - Start logging immediately when script starts
+        60 -  - Each invocation creates a new log file
+        61 -  - In default mode, logging stops before Docker session starts
+        62 -  - In verbose mode, logging continues until container exits
+        58 +  Looking at `claude-yo:260-269` (default mode):
+        59 +  ```bash
+        60 +  su - \$CONTAINER_USER -c '
+        61 +    cd /workspace
+        62 +    claude --dangerously-skip-permissions
+        63 +    echo ""
+        64 +    echo "═══════════════════════════════════════════════════════════════"
+        65 +    echo "Claude exited. You are still in the container for debugging."
+        66 +    echo "Type exit to leave the container."
+        67 +    echo "═══════════════════════════════════════════════════════════════"
+        68 +    exec bash -i
+        69 +  '
+        70 +  ```
+        71    
+        72 -  ### Integration with `-v`/`--verbose` Flag
+        72 +  **Current behavior**:
+        73 +  - `su` creates a subshell as `$CONTAINER_USER`
+        74 +  - Claude runs in that subshell
+        75 +  - When Claude exits, `exec bash -i` replaces the shell process
+        76 +  - When user types `exit`, the `su` command completes
+        77 +  - The outer Docker container bash script continues to line 271-273 (saves home dir)
+        78 +  - Container exits because of `--rm` flag
+        79    
+        80 -  | Scenario | Console Output | Log File | "Press Enter" Prompt |
+        81 -  |----------|----------------|----------|---------------------|
+        82 -  | Default (no flags) | All wrapper messages + Claude output | Wrapper messages only | Skipped (faster) |
+        83 -  | `--verbose` | All wrapper messages + Claude output | Everything including Docker session | Shown (time to review) |
+        80 +  **Problem**: There's no persistent shell. The bash session is inside the `su -c '...'` command string.
+        81    
+        82 -  This means:
+        83 -  - Logging always happens (wrapper messages at minimum)
+        84 -  - Verbose flag controls **both** log capture depth and workflow speed
+        85 -  - Default mode optimizes for speed and readable logs
+        86 -  - Verbose mode optimizes for debugging and full traceability
+        82 +  ### Design Decision: How to Implement Persistent Shell?
+        83    
+        84 -  ## Implementation Approach
+        84 +  **Option A: Remove `su -c` wrapper, use `su -l` instead**
+        85 +  ```bash
+        86 +  # Run Claude
+        87 +  su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+        88    
+        89 -  ### High-Level Steps
+        89 +  # Then drop to persistent shell
+        90 +  echo "Claude exited. Starting debug shell..."
+        91 +  exec su -l \$CONTAINER_USER
+        92 +  ```
+        93    
+        94 -  1. **Create log directory on first run**
+        95 -     - Check if `~/.claude-yolo/logs/` exists
+        96 -     - Create it if missing (with appropriate permissions)
+        94 +  **Analysis**:
+        95 +  - ✅ Simple and clean
+        96 +  - ✅ Shell persists after Claude exits
+        97 +  - ❌ **Problem**: `exec` replaces the bash process, so home directory save (lines 271-273) never runs
+        98 +  - ❌ Authentication tokens won't persist!
+        99    
+       100 -  2. **Generate timestamped log filename**
+       101 -     - Use `date` command: `date +%Y-%m-%d-%H%M%S`
+       102 -     - Construct full path: `~/.claude-yolo/logs/claude-yolo-$TIMESTAMP.log`
+       100 +  **Option B: Use bash to wait for user exit**
+       101 +  ```bash
+       102 +  # Run Claude
+       103 +  su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       104    
+       105 -  3. **Redirect all output through `tee`**
+       106 -     - Wrapper script output: Direct `tee` usage
+       107 -     - Docker container output: Harder - need to handle `docker run` output
+       105 +  # Drop to debug shell that can be exited
+       106 +  su -l \$CONTAINER_USER
+       107    
+       108 -  4. **Handle the complexity of Docker output**
+       109 -     - `docker run` with `-it` (interactive + TTY) makes output redirection tricky
+       110 -     - Need to preserve interactivity while logging
+       108 +  # This line runs after user exits shell
+       109 +  # Save home directory to persistent volume
+       110 +  mkdir -p /home-persist/\$CONTAINER_USER
+       111 +  cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+       112 +  ```
+       113    
+       114 -  ### Technical Challenges
+       114 +  **Analysis**:
+       115 +  - ✅ Shell persists after Claude
+       116 +  - ✅ Home directory save runs after user exits
+       117 +  - ✅ Clean separation of concerns
+       118 +  - ✅ Works with existing container flow
+       119    
+       120 -  #### Challenge 1: Logging Docker Interactive Sessions
+       121 -  The script uses `docker run -it` which allocates a pseudo-TTY. This is needed for:
+       122 -  - The `read` prompt (line 93)
+       123 -  - Claude Code's interactive interface
+       124 -  - The debug shell (line 104)
+       120 +  **Recommendation: Option B** - Sequential `su` calls with home directory save at the end.
+       121    
+       122 -  **Problem:** `tee` doesn't work cleanly with TTY allocation - you can't just pipe `docker run -it` through `tee`.
+       122 +  ### Prompt Behavior
+       123    
+       124 -  **Potential Solutions:**
+       124 +  Currently, all modes show the debug shell prompt after Claude exits. The task description says:
+       125    
+       126 -  **A) Use `script` command (Unix session recorder)**
+       126 +  > "Default behavior (not in debug mode): no need to press Enter; quitting Claude Code returns user to host, not container, 
+           + shell"
+       127 +  
+       128 +  This suggests we should **remove the debug shell** from default and verbose modes, not add persistence to debug mode!
+       129 +  
+       130 +  **Revised understanding**:
+       131 +  
+       132 +  | Mode | Enter prompt | Debug shell after Claude | Container behavior after Claude |
+       133 +  |------|--------------|-------------------------|--------------------------------|
+       134 +  | Default | ❌ No | ❌ No | Immediate exit to host |
+       135 +  | Verbose | ✅ Yes | ❌ No | Immediate exit to host |
+       136 +  | Debug | ✅ Yes | ✅ Yes | Persist in shell until user exits |
+       137 +  
+       138 +  **This makes more sense!** Most users want Claude to run and exit cleanly. Debug mode is explicitly for when you need to poke 
+           + around.
+       139 +  
+       140 +  ## Implementation Plan
+       141 +  
+       142 +  ### 1. Add `--debug` flag parsing
+       143 +  
+       144 +  Location: `claude-yo:6-54` (argument parsing section)
+       145 +  
+       146 +  Add:
+       147    ```bash
+       148 -  script -q -c "docker run -it ..." "$LOGFILE"
+       148 +  DEBUG=false
+       149 +  for arg in "$@"; do
+       150 +    case $arg in
+       151 +      # ... existing cases ...
+       152 +      -d|--debug)
+       153 +        DEBUG=true
+       154 +        shift
+       155 +        ;;
+       156    ```
+       157 -  - ✅ Designed for this exact use case
+       158 -  - ✅ Preserves TTY behavior
+       159 -  - ✅ Captures all output including control sequences
+       160 -  - ❌ Includes terminal control codes (may make logs messy)
+       161 -  - ❌ Not available on all systems (rare on Linux, might be issue elsewhere)
+       157    
+       158 -  **B) Split logging: wrapper separate from Docker**
+       159 -  ```bash
+       160 -  # Log wrapper messages
+       161 -  echo "Starting..." | tee -a "$LOGFILE"
+       158 +  ### 2. Update help text
+       159    
+       160 -  # Run Docker without logging (interactive session)
+       161 -  docker run -it ...
+       160 +  Location: `claude-yo:8-38`
+       161    
+       162 -  # Log completion
+       163 -  echo "Finished" | tee -a "$LOGFILE"
+       162 +  Add debug option documentation:
+       163 +  ```bash
+       164 +  echo "  -d, --debug      Enable debug mode with persistent container shell"
+       165    ```
+       166 -  - ✅ Simple and reliable
+       167 -  - ✅ No TTY conflicts
+       168 -  - ❌ Doesn't capture Claude Code output
+       169 -  - ❌ Defeats the purpose of logging
+       166    
+       167 -  **C) Use `docker logs` after the fact**
+       167 +  Add explanation in the modes section:
+       168    ```bash
+       169 -  # Run with container name
+       170 -  docker run --name claude-session-$TIMESTAMP -it ...
+       171 -  
+       172 -  # After exit, extract logs
+       173 -  docker logs claude-session-$TIMESTAMP > "$LOGFILE" 2>&1
+       169 +  echo "  Debug mode (advanced):"
+       170 +  echo "    - Shows 'Press Enter' prompt before starting Claude"
+       171 +  echo "    - After Claude exits, drops to persistent container shell"
+       172 +  echo "    - Container persists until you explicitly exit"
+       173 +  echo "    - Use for inspecting container state, testing commands, debugging"
+       174 +  echo "    - No session logging (interactive use only)"
+       175    ```
+       176 -  - ✅ Clean separation
+       177 -  - ❌ Requires `--rm` removal (conflicts with current design)
+       178 -  - ❌ Doesn't capture interactive prompts properly
+       179 -  - ❌ Adds complexity
+       176    
+       177 -  **Recommendation: Solution A (`script` command)** with a fallback message if `script` is unavailable.
+       177 +  ### 3. Implement mode-specific container behavior
+       178    
+       179 -  #### Challenge 2: Log File Path Communication
+       180 -  Since the log is created on the host but we're immediately entering a Docker container, we need to inform the user where the 
+           - log is being written.
+       179 +  Location: `claude-yo:106-275` (container execution section)
+       180    
+       181 -  **Solution:** Print log location before entering Docker:
+       181 +  Need to split into three branches:
+       182 +  1. `VERBOSE=true` - Full logging, no debug shell
+       183 +  2. `DEBUG=true` - Enter prompt, persistent debug shell, no logging
+       184 +  3. Default - No prompt, no debug shell, no logging
+       185 +  
+       186 +  **Structure**:
+       187    ```bash
+       188 -  echo "Logging session to: $LOGFILE"
+       188 +  if [ "$VERBOSE" = true ]; then
+       189 +    # Verbose mode: full logging, no debug shell
+       190 +    # (existing code, but REMOVE debug shell section)
+       191 +  elif [ "$DEBUG" = true ]; then
+       192 +    # Debug mode: enter prompt, persistent debug shell, no logging
+       193 +    # NEW CODE
+       194 +  else
+       195 +    # Default mode: fast start, immediate exit
+       196 +    # (existing code, but REMOVE debug shell section)
+       197 +  fi
+       198    ```
+       199    
+       200 -  #### Challenge 3: Handling Partial Logs on Error
+       201 -  If the script fails early (e.g., Docker build fails), we should still have a log.
+       200 +  ### 4. Modify existing modes to remove debug shell
+       201    
+       202 -  **Solution:** Create log file and start logging before any Docker operations.
+       202 +  **Default mode** (`claude-yo:222-275`):
+       203 +  - Remove lines 263-268 (debug shell prompt and `exec bash -i`)
+       204 +  - Claude should run and container should exit immediately
+       205    
+       206 -  ### Detailed Implementation Plan
+       206 +  **Verbose mode** (`claude-yo:107-220`):
+       207 +  - Remove debug shell sections from both the `script` wrapper and fallback
+       208 +  - Container should exit after Claude exits
+       209    
+       210 +  ### 5. Implement debug mode logic
+       211 +  
+       212 +  New section between verbose and default:
+       213    ```bash
+       214 -  # 1. Early in script (after argument parsing, before any operations)
+       215 -  LOG_DIR="$HOME/.claude-yolo/logs"
+       216 -  mkdir -p "$LOG_DIR"
+       217 -  TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
+       218 -  LOGFILE="$LOG_DIR/claude-yolo-$TIMESTAMP.log"
+       214 +  elif [ "$DEBUG" = true ]; then
+       215 +    log_message "Debug mode enabled - container will persist after Claude exits"
+       216    
+       217 -  # 2. Notify user
+       218 -  echo "Session log: $LOGFILE"
+       217 +    docker run \
+       218 +      -v "$MOUNTDIR":/workspace \
+       219 +      -v claude-yolo-home:/home-persist \
+       220 +      -it \
+       221 +      --rm \
+       222 +      claude-yolo:latest \
+       223 +      /bin/bash -c "
+       224 +        # Find if a user with our UID already exists
+       225 +        EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
+       226    
+       227 -  # 3. Wrap the main execution in script command
+       228 -  script -q -f -c '
+       229 -    # ... rest of the script (build, docker run, etc)
+       230 -    # Everything goes here
+       231 -  ' "$LOGFILE"
+       227 +        if [ -n \"\$EXISTING_USER\" ]; then
+       228 +          CONTAINER_USER=\$EXISTING_USER
+       229 +        else
+       230 +          CONTAINER_USER=$USERNAME
+       231 +          groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
+       232 +          useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
+       233 +        fi
+       234 +  
+       235 +        # Restore home directory from persistent volume if it exists
+       236 +        if [ -d /home-persist/\$CONTAINER_USER ]; then
+       237 +          cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
+       238 +        fi
+       239 +  
+       240 +        # Display setup information with prompt
+       241 +        echo \"═══════════════════════════════════════════════════════════════\"
+       242 +        echo \"Container Setup Complete (Debug Mode)\"
+       243 +        echo \"═══════════════════════════════════════════════════════════════\"
+       244 +        echo \"Container user:      \$CONTAINER_USER\"
+       245 +        echo \"UID:GID:             $USERID:$GROUPID\"
+       246 +        echo \"Working directory:   $MOUNTDIR\"
+       247 +        echo \"                     → mounted at /workspace\"
+       248 +        echo \"═══════════════════════════════════════════════════════════════\"
+       249 +        echo \"\"
+       250 +        echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
+       251 +        read
+       252 +  
+       253 +        # Run Claude Code
+       254 +        su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       255 +  
+       256 +        # After Claude exits, drop to persistent debug shell
+       257 +        echo \"\"
+       258 +        echo \"═══════════════════════════════════════════════════════════════\"
+       259 +        echo \"Claude exited. Starting debug shell...\"
+       260 +        echo \"═══════════════════════════════════════════════════════════════\"
+       261 +        echo \"You are now in the container as \$CONTAINER_USER\"
+       262 +        echo \"Working directory: /workspace (mounted from $MOUNTDIR)\"
+       263 +        echo \"\"
+       264 +        echo \"You can:\"
+       265 +        echo \"  - Inspect files and container state\"
+       266 +        echo \"  - Test commands or debug issues\"
+       267 +        echo \"  - Run additional tools\"
+       268 +        echo \"\"
+       269 +        echo \"Type 'exit' to save your home directory and leave the container.\"
+       270 +        echo \"═══════════════════════════════════════════════════════════════\"
+       271 +        echo \"\"
+       272 +  
+       273 +        # Drop to shell and wait for user to exit
+       274 +        su -l \$CONTAINER_USER
+       275 +  
+       276 +        # After user exits, save home directory to persistent volume
+       277 +        echo \"Saving authentication data...\"
+       278 +        mkdir -p /home-persist/\$CONTAINER_USER
+       279 +        cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+       280 +        echo \"Done. Exiting container.\"
+       281 +      "
+       282 +  fi
+       283    ```
+       284    
+       285 -  **Alternative if we want more control:**
+       286 -  ```bash
+       287 -  # Use process substitution to tee everything
+       288 -  exec > >(tee -a "$LOGFILE")
+       289 -  exec 2>&1
+       285 +  ### 6. Handle flag conflicts
+       286    
+       287 -  # Then rest of script runs normally
+       287 +  Add validation after argument parsing:
+       288 +  ```bash
+       289 +  # Validate flag combinations
+       290 +  if [ "$VERBOSE" = true ] && [ "$DEBUG" = true ]; then
+       291 +    echo "Error: Cannot use --verbose and --debug together"
+       292 +    echo "Use --help for usage information"
+       293 +    exit 1
+       294 +  fi
+       295    ```
+       296    
+       297 -  **Issue with above:** Doesn't work well with `docker run -it` because TTY conflicts.
+       297 +  ## Edge Cases and Considerations
+       298    
+       299 -  ### Recommended Implementation (REVISED)
+       299 +  ### 1. Flag Conflicts
+       300 +  **Scenario**: User runs `./claude-yo --verbose --debug`
+       301    
+       302 -  **Default mode implementation:**
+       303 -  1. Parse `--verbose` flag during argument processing
+       304 -  2. Log wrapper script messages using `tee`
+       305 -  3. Show container setup info without "Press Enter" prompt
+       306 -  4. Run Docker session **without** `script` wrapper (no logging)
+       307 -  5. Simple, fast, clean logs
+       302 +  **Solution**: Treat as mutually exclusive. Exit with error message.
+       303    
+       304 -  **Verbose mode implementation:**
+       305 -  1. Log wrapper script messages using `tee`
+       306 -  2. Show container setup info **with** "Press Enter" prompt
+       307 -  3. Wrap `docker run` with `script` command to capture full session
+       308 -  4. Fall back gracefully if `script` unavailable
+       304 +  ### 2. Authentication Persistence
+       305 +  **Scenario**: User doesn't exit cleanly (Ctrl+C, terminal crash)
+       306    
+       307 -  ```bash
+       308 -  # Early setup
+       309 -  VERBOSE=false  # Set from argument parsing
+       310 -  LOG_DIR="$HOME/.claude-yolo/logs"
+       311 -  mkdir -p "$LOG_DIR"
+       312 -  TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
+       313 -  LOGFILE="$LOG_DIR/claude-yolo-$TIMESTAMP.log"
+       307 +  **Impact**: Home directory save won't run, authentication tokens might not persist
+       308    
+       309 -  # Log function for wrapper messages
+       310 -  log_message() {
+       311 -    echo "$@" | tee -a "$LOGFILE"
+       312 -  }
+       309 +  **Mitigation**: Document this limitation. Consider adding signal handlers in future.
+       310    
+       311 -  # Use log_message for all wrapper echo statements
+       312 -  log_message "Session log: $LOGFILE"
+       313 -  log_message "Building Docker image..."
+       311 +  ### 3. Working Directory
+       312 +  **Scenario**: User changes directory inside debug shell
+       313    
+       314 -  # Docker run command varies by mode
+       315 -  if [ "$VERBOSE" = true ]; then
+       316 -    # Verbose mode: capture full session with script command
+       317 -    if command -v script &> /dev/null; then
+       318 -      script -q -f -c "docker run ... (with read prompt)" "$LOGFILE"
+       319 -    else
+       320 -      log_message "Warning: 'script' command not found. Docker session will not be logged."
+       321 -      docker run ... (with read prompt)
+       322 -    fi
+       323 -  else
+       324 -    # Default mode: no session capture, no prompt, just run
+       325 -    docker run ... (without read prompt)
+       326 -  fi
+       327 -  ```
+       314 +  **Expected behavior**: Fine - they're exploring the container
+       315    
+       316 -  ## Edge Cases to Consider
+       316 +  **Note**: Document that `/workspace` is the mounted project directory
+       317    
+       318 -  1. **Log directory permissions**: What if `~/.claude-yolo` isn't writable?
+       319 -     - Check and fail gracefully with error message
+       318 +  ### 4. Multiple Shells
+       319 +  **Scenario**: User runs nested bash sessions in debug shell
+       320    
+       321 -  2. **Disk space**: Log files could accumulate
+       322 -     - Document that users should periodically clean logs
+       323 -     - Consider: Add `--clean-logs` flag in future? (out of scope for this task)
+       321 +  **Expected behavior**: Each `exit` returns to parent shell until final exit
+       322    
+       323 -  3. **Special characters in output**: Claude might output Unicode, ANSI codes, etc.
+       324 -     - `script` handles this natively
+       325 -     - No special handling needed
+       323 +  **Note**: This is standard Unix behavior, no special handling needed
+       324    
+       325 -  4. **Multiple simultaneous runs**: Timestamp includes seconds, so collision unlikely
+       326 -     - If needed, add PID to filename: `claude-yolo-$TIMESTAMP-$$.log`
+       325 +  ### 5. File Ownership
+       326 +  **Scenario**: User creates files as root in debug shell
+       327    
+       328 -  5. **Interrupted sessions**: Ctrl+C or kill signal
+       329 -     - Log will be incomplete but still useful
+       330 -     - No special handling needed - this is acceptable
+       328 +  **Risk**: Files created as root won't be accessible on host
+       329    
+       330 +  **Mitigation**: Document that debug shell runs as mapped user, not root. Creating files as root requires `sudo` which isn't 
+           + available in the container.
+       331 +  
+       332    ## Testing Plan
+       333    
+       334 -  After implementation, test:
+       334 +  ### Test Case 1: Default Mode (Modified)
+       335 +  ```bash
+       336 +  ./claude-yo
+       337 +  # Expected:
+       338 +  # - No "Press Enter" prompt
+       339 +  # - Claude starts immediately
+       340 +  # - When Claude exits, container exits (back to host)
+       341 +  # - No debug shell
+       342 +  ```
+       343    
+       344 -  **Default mode (no flags):**
+       345 -  1. **Normal run**: Verify log contains wrapper messages but NOT Claude session
+       346 -  2. **No Enter prompt**: Verify container starts immediately without pause
+       347 -  3. **Build run**: Verify Docker build output is logged
+       348 -  4. **Rebuild run**: Verify rebuild output is logged
+       349 -  5. **Error scenario**: Trigger build failure, verify error is logged
+       350 -  6. **Log size**: Verify log file is small (< 100 lines for typical run)
+       344 +  ### Test Case 2: Verbose Mode (Modified)
+       345 +  ```bash
+       346 +  ./claude-yo --verbose
+       347 +  # Expected:
+       348 +  # - "Press Enter" prompt shown
+       349 +  # - User presses Enter
+       350 +  # - Claude starts
+       351 +  # - Full session logged to file
+       352 +  # - When Claude exits, container exits (back to host)
+       353 +  # - No debug shell
+       354 +  ```
+       355    
+       356 -  **Verbose mode (`--verbose`):**
+       357 -  1. **Full capture**: Verify log contains wrapper messages AND Claude session
+       358 -  2. **Enter prompt present**: Verify "Press Enter" prompt appears
+       359 -  3. **Debug shell logged**: Verify debug shell commands are in log
+       360 -  4. **Large log**: Verify log captures full session (thousands of lines OK)
+       361 -  5. **Fallback**: Test on system without `script` command
+       356 +  ### Test Case 3: Debug Mode (New)
+       357 +  ```bash
+       358 +  ./claude-yo --debug
+       359 +  # Expected:
+       360 +  # - "Press Enter" prompt shown
+       361 +  # - Container setup details displayed
+       362 +  # - User presses Enter
+       363 +  # - Claude starts
+       364 +  # - When Claude exits, debug shell appears
+       365 +  # - User can run commands (ls, pwd, etc.)
+       366 +  # - User types 'exit'
+       367 +  # - Home directory is saved
+       368 +  # - Container exits, returns to host
+       369 +  ```
+       370    
+       371 +  ### Test Case 4: Flag Conflict
+       372 +  ```bash
+       373 +  ./claude-yo --verbose --debug
+       374 +  # Expected:
+       375 +  # - Error message: "Cannot use --verbose and --debug together"
+       376 +  # - Exit with status 1
+       377 +  ```
+       378 +  
+       379 +  ### Test Case 5: Authentication Persistence in Debug Mode
+       380 +  ```bash
+       381 +  # First run
+       382 +  ./claude-yo --debug
+       383 +  # Inside container: Authenticate with Claude
+       384 +  # Exit cleanly
+       385 +  
+       386 +  # Second run
+       387 +  ./claude-yo --debug
+       388 +  # Expected: Already authenticated (tokens persisted)
+       389 +  ```
+       390 +  
+       391 +  ### Test Case 6: File Creation in Debug Shell
+       392 +  ```bash
+       393 +  ./claude-yo --debug
+       394 +  # Inside debug shell:
+       395 +  touch /workspace/test-file.txt
+       396 +  ls -la /workspace/test-file.txt
+       397 +  exit
+       398 +  
+       399 +  # On host:
+       400 +  ls -la test-file.txt
+       401 +  # Expected: File exists with host user ownership
+       402 +  ```
+       403 +  
+       404 +  ## Implementation Checklist
+       405 +  
+       406 +  - [ ] Add `DEBUG=false` variable initialization
+       407 +  - [ ] Add `-d|--debug` case to argument parsing
+       408 +  - [ ] Add debug mode documentation to help text
+       409 +  - [ ] Add flag conflict validation
+       410 +  - [ ] Update log message for debug mode
+       411 +  - [ ] Implement debug mode container execution branch
+       412 +  - [ ] Remove debug shell from default mode
+       413 +  - [ ] Remove debug shell from verbose mode (both script and fallback)
+       414 +  - [ ] Test all three modes independently
+       415 +  - [ ] Test flag conflict handling
+       416 +  - [ ] Update TASKS.md to mark debug feature complete
+       417 +  
+       418 +  ## Documentation Updates
+       419 +  
+       420 +  After implementation, update:
+       421 +  
+       422 +  1. **README.md**: Add debug mode explanation
+       423 +  2. **CLAUDE.md**: Update "Debug Shell Access" section to clarify it's debug-mode-only
+       424 +  3. **TASKS.md**: Mark debug task as complete
+       425 +  
+       426    ## Future Enhancements (Out of Scope)
+       427    
+       428 -  - Automatic log rotation/cleanup after N days
+       429 -  - `--no-log` flag to disable logging
+       430 -  - `--log-dir` flag to specify custom log location
+       431 -  - Compress old logs automatically
+       432 -  - Log viewer/search utility
+       428 +  - Signal handlers to ensure home directory save on Ctrl+C
+       429 +  - `--no-persist` flag to skip home directory save (faster testing)
+       430 +  - Automatic cleanup of old authentication tokens
+       431 +  - Container naming to allow multiple simultaneous sessions
+       432    
+       433    ## Summary
+       434    
+       435 -  **REVISED Implementation:**
+       435 +  The debug mode adds a third operational mode to `claude-yo`:
+       436    
+       437 -  1. Add `--verbose` flag to argument parsing
+       438 -  2. Create `~/.claude-yolo/logs/` directory
+       439 -  3. Generate timestamped log filename
+       440 -  4. Log wrapper messages using `tee` in all modes
+       441 -  5. Inform user of log location at start
+       437 +  1. **Default**: Fast, clean, automatic exit after Claude
+       438 +  2. **Verbose**: Full logging, automatic exit after Claude
+       439 +  3. **Debug**: Interactive control, persistent shell for exploration
+       440    
+       441 -  **Default mode (fast & clean):**
+       442 -  - Skip "Press Enter" prompt in Docker container setup
+       443 -  - Run Docker session without `script` wrapper
+       444 -  - Log contains only wrapper messages (small files)
+       441 +  Key implementation points:
+       442 +  - Sequential `su` calls (Claude, then shell) instead of nested
+       443 +  - Explicit flag conflict validation
+       444 +  - Clear user messaging about what mode they're in
+       445 +  - Home directory save happens after debug shell exit
+       446    
+       447 -  **Verbose mode (debugging):**
+       448 -  - Keep "Press Enter" prompt in Docker container setup
+       449 -  - Wrap Docker session with `script` command for full capture
+       450 -  - Log contains everything including Claude output (large files)
+       451 -  - Fallback gracefully if `script` unavailable
+       452 -  
+       453 -  This approach balances UX (fast default) with debugging capability (verbose option).
+       447 +  This complements the existing modes while keeping the common use case (default) fast and simple.
+
+● Perfect! I've created a comprehensive plan for implementing the debug mode feature. Here's a summary of what the plan covers:
+
+  Plan Highlights
+
+  Key Insight: After analyzing the current code and the task requirements, I realized that the debug mode should be the only mode with a
+  persistent shell. The current implementation has debug shells in ALL modes, which should be removed.
+
+  Three Distinct Modes:
+  1. Default - Fast startup, immediate exit after Claude (no debug shell)
+  2. Verbose - Full session logging, immediate exit after Claude (no debug shell)
+  3. Debug (new) - Interactive control with persistent shell for exploration
+
+  Main Implementation Points:
+  - Add --debug flag parsing with conflict validation (can't use with --verbose)
+  - Remove debug shells from default and verbose modes
+  - Implement new debug mode with sequential su calls (Claude first, then persistent shell)
+  - Ensure home directory save runs after user exits debug shell
+  - Clear messaging about what each mode does
+
+  Technical Approach:
+  - Use sequential su - $CONTAINER_USER -c '...' for Claude, then su -l $CONTAINER_USER for the persistent shell
+  - This ensures the home directory save code runs after the shell exits (crucial for auth persistence)
+  - No session logging in debug mode (it's for interactive use)
+
+  The plan includes detailed implementation steps, edge case analysis, a comprehensive testing plan, and a checklist to track progress. Ready
+  to implement when you are!
+
+> It looks like you're planning to **disable** logging in debug mode, and your reasoning makes sense. But, there's no reason a user couldn't 
+select both --debug and --logging. This means that the default logging settings for debug mode (no logging) need to be overridden if the 
+logging option is also selected. What do you think of this approach? If you agree, update the @PLAN.md to incorporate this new approach; 
+othewise, let's discuss the approach you recommend. 
+  ⎿  Read PLAN.md (448 lines)
+
+● I agree with your approach! You're absolutely right - there's no technical reason why a user couldn't want both debug mode AND logging.
+  They're orthogonal concerns:
+
+  - Debug mode controls the container lifecycle (persistent shell vs immediate exit)
+  - Logging controls what gets captured to files
+
+  A user might want to debug an issue AND have a log of their session for later review. Let me update the plan to support both flags together.
+
+● Read(PLAN.md)
+  ⎿  Read 100 lines
+
+● Write(PLAN.md)
+  ⎿  Updated PLAN.md with 362 additions and 150 removals                                                                                    
+       1    # Plan: Add Debug Mode (`-d` or `--debug`)
+       2    
+       3    ## Task Overview
+       4 -  Implement a debug mode that gives users more control over the container lifecycle and allows shell access after Claude Code 
+         -  exits. This complements the existing default and verbose modes.
+       4 +  Implement a debug mode that gives users more control over the container lifecycle and allows shell access after Claude Code 
+         +  exits. Debug mode is orthogonal to logging - users can combine flags for different workflows.
+       5    
+       6    ## Current Behavior
+       7    
+     ...
+       19    
+       20    ## Desired Behavior
+       21    
+       22 -  ### Debug Mode (`--debug`)
+       23 -  The debug mode should provide maximum control and inspection capability:
+       22 +  ### Orthogonal Concerns: Debug vs Logging
+       23    
+       24 -  1. **Manual entry**: Show "Press Enter" prompt (like verbose mode)
+       24 +  **Key insight**: Debug mode and logging are independent features that can be combined:
+       25 +  
+       26 +  - **Debug mode (`--debug`)**: Controls container lifecycle (persistent shell vs immediate exit)
+       27 +  - **Logging (`--verbose`)**: Controls session capture (wrapper only vs full session)
+       28 +  
+       29 +  Users should be able to combine these flags:
+       30 +  - `./claude-yo` - Fast workflow, no debug shell
+       31 +  - `./claude-yo --debug` - Persistent shell, no session logging
+       32 +  - `./claude-yo --verbose` - Session logging, no debug shell
+       33 +  - `./claude-yo --debug --verbose` - Persistent shell AND full session logging
+       34 +  
+       35 +  ### Feature Matrix
+       36 +  
+       37 +  | Flag Combination | Enter Prompt | Session Logging | Debug Shell | Use Case |
+       38 +  |-----------------|--------------|-----------------|-------------|----------|
+       39 +  | (none) | ❌ No | Wrapper only | ❌ No | Fast production workflow |
+       40 +  | `--verbose` | ✅ Yes | Full session | ❌ No | Capture logs for review |
+       41 +  | `--debug` | ✅ Yes | Wrapper only | ✅ Yes | Interactive exploration |
+       42 +  | `--debug --verbose` | ✅ Yes | Full session | ✅ Yes | Debug with full audit trail |
+       43 +  
+       44 +  ### Debug Mode Behavior
+       45 +  
+       46 +  When `--debug` is enabled (with or without `--verbose`):
+       47 +  
+       48 +  1. **Manual entry**: Show "Press Enter" prompt
+       49       - Gives user time to review container setup
+       50       - User explicitly chooses when to start Claude
+       51    
+       52    2. **Shell persistence**: After Claude exits, stay in container shell
+       53       - User can inspect state, test commands, debug issues
+       54       - Container persists until user explicitly types `exit`
+       55 -     - **Key difference**: Normal modes would auto-exit after Claude, debug mode keeps shell
+       55 +     - Home directory saved when user exits shell
+       56    
+       57 -  3. **No automatic logging**: Debug mode is for interactive exploration
+       58 -     - No session logging (user is actively watching)
+       59 -     - Console output only
+       57 +  3. **Logging behavior**: Respects `--verbose` flag
+       58 +     - Without `--verbose`: Wrapper messages only (console + log file)
+       59 +     - With `--verbose`: Full session capture using `script` command
+       60    
+       61    4. **Clear messaging**: User understands they're in control
+       62       - Clear prompts explaining what happens next
+       63       - Explicit instructions on how to exit
+       64    
+       65 -  ### Relationship to Other Modes
+       66 -  
+       67 -  | Feature | Default | Verbose | Debug |
+       68 -  |---------|---------|---------|-------|
+       69 -  | "Press Enter" prompt | ❌ No (fast) | ✅ Yes | ✅ Yes |
+       70 -  | Session logging | Wrapper only | Full session | ❌ None |
+       71 -  | Debug shell after Claude | ✅ Yes | ✅ Yes | ✅ Yes |
+       72 -  | Auto-exit on shell exit | ✅ Yes | ✅ Yes | ❌ No (persist) |
+       73 -  | Use case | Production | Debugging logs | Live debugging |
+       74 -  
+       75 -  **Note**: The "auto-exit on shell exit" distinction is the **main behavioral difference** for debug mode.
+       76 -  
+       65    ## Implementation Analysis
+       66    
+       67    ### Current Container Flow
+     ...
+        97    - ❌ **Problem**: `exec` replaces the bash process, so home directory save (lines 271-273) never runs
+        98    - ❌ Authentication tokens won't persist!
+        99    
+       100 -  **Option B: Use bash to wait for user exit**
+       100 +  **Option B: Use bash to wait for user exit (RECOMMENDED)**
+       101    ```bash
+       102    # Run Claude
+       103    su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+     ...
+       116    - ✅ Home directory save runs after user exits
+       117    - ✅ Clean separation of concerns
+       118    - ✅ Works with existing container flow
+       119 +  - ✅ Compatible with `script` wrapper for logging
+       120    
+       121    **Recommendation: Option B** - Sequential `su` calls with home directory save at the end.
+       122    
+       123 -  ### Prompt Behavior
+       123 +  ### Logging Integration
+       124    
+       125 -  Currently, all modes show the debug shell prompt after Claude exits. The task description says:
+       125 +  The `script` command wrapper (used for `--verbose`) can wrap the entire container flow:
+       126    
+       127 -  > "Default behavior (not in debug mode): no need to press Enter; quitting Claude Code returns user to host, not container, 
+           - shell"
+       127 +  **Without debug shell** (current verbose mode, to be modified):
+       128 +  ```bash
+       129 +  script -q -f -c "docker run ... (Claude runs, then exits)" "$LOGFILE"
+       130 +  ```
+       131    
+       132 -  This suggests we should **remove the debug shell** from default and verbose modes, not add persistence to debug mode!
+       132 +  **With debug shell** (`--debug --verbose`):
+       133 +  ```bash
+       134 +  script -q -f -c "docker run ... (Claude runs, then persistent shell)" "$LOGFILE"
+       135 +  ```
+       136    
+       137 -  **Revised understanding**:
+       137 +  The debug shell behavior is controlled by the Docker container's bash script, not the `script` wrapper. The `script` wrapper 
+           + just captures everything.
+       138    
+       139 -  | Mode | Enter prompt | Debug shell after Claude | Container behavior after Claude |
+       140 -  |------|--------------|-------------------------|--------------------------------|
+       141 -  | Default | ❌ No | ❌ No | Immediate exit to host |
+       142 -  | Verbose | ✅ Yes | ❌ No | Immediate exit to host |
+       143 -  | Debug | ✅ Yes | ✅ Yes | Persist in shell until user exits |
+       144 -  
+       145 -  **This makes more sense!** Most users want Claude to run and exit cleanly. Debug mode is explicitly for when you need to poke 
+           - around.
+       146 -  
+       139    ## Implementation Plan
+       140    
+       141    ### 1. Add `--debug` flag parsing
+       142    
+       143 -  Location: `claude-yo:6-54` (argument parsing section)
+       143 +  Location: `claude-yo:3-54` (argument parsing section)
+       144    
+       145    Add:
+       146    ```bash
+       147    DEBUG=false
+       148 +  VERBOSE=false
+       149    for arg in "$@"; do
+       150      case $arg in
+       151        # ... existing cases ...
+     ...
+       164    echo "  -d, --debug      Enable debug mode with persistent container shell"
+       165    ```
+       166    
+       167 -  Add explanation in the modes section:
+       167 +  Update the modes documentation to show flag combinations:
+       168    ```bash
+       169 -  echo "  Debug mode (advanced):"
+       170 -  echo "    - Shows 'Press Enter' prompt before starting Claude"
+       171 -  echo "    - After Claude exits, drops to persistent container shell"
+       172 -  echo "    - Container persists until you explicitly exit"
+       173 -  echo "    - Use for inspecting container state, testing commands, debugging"
+       174 -  echo "    - No session logging (interactive use only)"
+       169 +  echo "Modes:"
+       170 +  echo "  Default (no flags):"
+       171 +  echo "    - Fast startup with no 'Press Enter' prompt"
+       172 +  echo "    - Claude exits → returns to host immediately"
+       173 +  echo "    - Logs wrapper messages only"
+       174 +  echo ""
+       175 +  echo "  Verbose mode (--verbose):"
+       176 +  echo "    - Shows 'Press Enter' prompt to review setup"
+       177 +  echo "    - Logs full session including Claude Code output"
+       178 +  echo "    - Claude exits → returns to host immediately"
+       179 +  echo ""
+       180 +  echo "  Debug mode (--debug):"
+       181 +  echo "    - Shows 'Press Enter' prompt to review setup"
+       182 +  echo "    - Claude exits → drops to persistent container shell"
+       183 +  echo "    - Type 'exit' to save and leave container"
+       184 +  echo "    - Logs wrapper messages only"
+       185 +  echo ""
+       186 +  echo "  Debug + Verbose (--debug --verbose):"
+       187 +  echo "    - Combines debug mode with full session logging"
+       188 +  echo "    - Useful for debugging with complete audit trail"
+       189    ```
+       190    
+       191 -  ### 3. Implement mode-specific container behavior
+       191 +  ### 3. Restructure container execution logic
+       192    
+       193 -  Location: `claude-yo:106-275` (container execution section)
+       193 +  Current structure:
+       194 +  ```bash
+       195 +  if [ "$VERBOSE" = true ]; then
+       196 +    # Verbose mode with script wrapper
+       197 +  elif
+       198 +    # Default mode
+       199 +  fi
+       200 +  ```
+       201    
+       202 -  Need to split into three branches:
+       203 -  1. `VERBOSE=true` - Full logging, no debug shell
+       204 -  2. `DEBUG=true` - Enter prompt, persistent debug shell, no logging
+       205 -  3. Default - No prompt, no debug shell, no logging
+       202 +  New structure (matrix of debug × logging):
+       203 +  ```bash
+       204 +  if [ "$DEBUG" = true ]; then
+       205 +    if [ "$VERBOSE" = true ]; then
+       206 +      # Debug mode WITH logging
+       207 +    else
+       208 +      # Debug mode WITHOUT logging
+       209 +    fi
+       210 +  else
+       211 +    if [ "$VERBOSE" = true ]; then
+       212 +      # No debug WITH logging (current verbose mode, modified)
+       213 +    else
+       214 +      # No debug WITHOUT logging (current default mode, modified)
+       215 +    fi
+       216 +  fi
+       217 +  ```
+       218    
+       219 -  **Structure**:
+       219 +  ### 4. Implement four modes
+       220 +  
+       221 +  #### Mode 1: Default (no debug, no verbose)
+       222    ```bash
+       223 -  if [ "$VERBOSE" = true ]; then
+       224 -    # Verbose mode: full logging, no debug shell
+       225 -    # (existing code, but REMOVE debug shell section)
+       226 -  elif [ "$DEBUG" = true ]; then
+       227 -    # Debug mode: enter prompt, persistent debug shell, no logging
+       228 -    # NEW CODE
+       223    else
+       224 -    # Default mode: fast start, immediate exit
+       225 -    # (existing code, but REMOVE debug shell section)
+       224 +    # Default mode: fast start, immediate exit, wrapper logging only
+       225 +    docker run \
+       226 +      -v "$MOUNTDIR":/workspace \
+       227 +      -v claude-yolo-home:/home-persist \
+       228 +      -it \
+       229 +      --rm \
+       230 +      claude-yolo:latest \
+       231 +      /bin/bash -c "
+       232 +        # User setup...
+       233 +        # Restore home directory...
+       234 +  
+       235 +        # Display setup (no prompt)
+       236 +        echo \"Starting Claude Code with --dangerously-skip-permissions...\"
+       237 +  
+       238 +        # Run Claude and EXIT (no debug shell)
+       239 +        su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       240 +  
+       241 +        # Save home directory
+       242 +        mkdir -p /home-persist/\$CONTAINER_USER
+       243 +        cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+       244 +      "
+       245    fi
+       246    ```
+       247    
+       248 -  ### 4. Modify existing modes to remove debug shell
+       248 +  #### Mode 2: Verbose only (no debug, with logging)
+       249 +  ```bash
+       250 +  if [ "$VERBOSE" = true ]; then
+       251 +    log_message "Verbose mode enabled - full session will be logged"
+       252    
+       253 -  **Default mode** (`claude-yo:222-275`):
+       254 -  - Remove lines 263-268 (debug shell prompt and `exec bash -i`)
+       255 -  - Claude should run and container should exit immediately
+       253 +    if command -v script &> /dev/null; then
+       254 +      script -q -f -c "docker run \
+       255 +        -v \"$MOUNTDIR\":/workspace \
+       256 +        -v claude-yolo-home:/home-persist \
+       257 +        -it \
+       258 +        --rm \
+       259 +        claude-yolo:latest \
+       260 +        /bin/bash -c \"
+       261 +          # User setup...
+       262 +          # Restore home directory...
+       263    
+       264 -  **Verbose mode** (`claude-yo:107-220`):
+       265 -  - Remove debug shell sections from both the `script` wrapper and fallback
+       266 -  - Container should exit after Claude exits
+       264 +          # Display setup WITH prompt
+       265 +          echo \\\"Press Enter to start Claude Code with --dangerously-skip-permissions\\\"
+       266 +          read
+       267    
+       268 -  ### 5. Implement debug mode logic
+       268 +          # Run Claude and EXIT (no debug shell)
+       269 +          su - \\\$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       270    
+       271 -  New section between verbose and default:
+       271 +          # Save home directory
+       272 +          mkdir -p /home-persist/\\\$CONTAINER_USER
+       273 +          cp -a /home/\\\$CONTAINER_USER/. /home-persist/\\\$CONTAINER_USER/
+       274 +        \"" "$LOGFILE"
+       275 +    else
+       276 +      # Fallback without script command (same logic, no logging wrapper)
+       277 +    fi
+       278 +  ```
+       279 +  
+       280 +  #### Mode 3: Debug only (with debug, no logging)
+       281    ```bash
+       282 -  elif [ "$DEBUG" = true ]; then
+       282 +  else
+       283 +    # Debug mode WITHOUT logging
+       284      log_message "Debug mode enabled - container will persist after Claude exits"
+       285    
+       286      docker run \
+     ...
+       221        --rm \
+       222        claude-yolo:latest \
+       223        /bin/bash -c "
+       224 -        # Find if a user with our UID already exists
+       225 -        EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
+       224 +        # User setup...
+       225 +        # Restore home directory...
+       226    
+       227 -        if [ -n \"\$EXISTING_USER\" ]; then
+       228 -          CONTAINER_USER=\$EXISTING_USER
+       229 -        else
+       230 -          CONTAINER_USER=$USERNAME
+       231 -          groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
+       232 -          useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
+       233 -        fi
+       234 -  
+       235 -        # Restore home directory from persistent volume if it exists
+       236 -        if [ -d /home-persist/\$CONTAINER_USER ]; then
+       237 -          cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
+       238 -        fi
+       239 -  
+       240 -        # Display setup information with prompt
+       241 -        echo \"═══════════════════════════════════════════════════════════════\"
+       242 -        echo \"Container Setup Complete (Debug Mode)\"
+       243 -        echo \"═══════════════════════════════════════════════════════════════\"
+       244 -        echo \"Container user:      \$CONTAINER_USER\"
+       245 -        echo \"UID:GID:             $USERID:$GROUPID\"
+       246 -        echo \"Working directory:   $MOUNTDIR\"
+       247 -        echo \"                     → mounted at /workspace\"
+       248 -        echo \"═══════════════════════════════════════════════════════════════\"
+       249 -        echo \"\"
+       227 +        # Display setup WITH prompt
+       228          echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
+       229          read
+       230    
+       231 -        # Run Claude Code
+       231 +        # Run Claude
+       232          su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       233    
+       234 -        # After Claude exits, drop to persistent debug shell
+       234 +        # Drop to PERSISTENT debug shell
+       235          echo \"\"
+       236          echo \"═══════════════════════════════════════════════════════════════\"
+       237          echo \"Claude exited. Starting debug shell...\"
+       238          echo \"═══════════════════════════════════════════════════════════════\"
+       239          echo \"You are now in the container as \$CONTAINER_USER\"
+       240 -        echo \"Working directory: /workspace (mounted from $MOUNTDIR)\"
+       240 +        echo \"Working directory: /workspace\"
+       241          echo \"\"
+       242 -        echo \"You can:\"
+       243 -        echo \"  - Inspect files and container state\"
+       244 -        echo \"  - Test commands or debug issues\"
+       245 -        echo \"  - Run additional tools\"
+       246 -        echo \"\"
+       242          echo \"Type 'exit' to save your home directory and leave the container.\"
+       243          echo \"═══════════════════════════════════════════════════════════════\"
+       244          echo \"\"
+       245    
+       246 -        # Drop to shell and wait for user to exit
+       246          su -l \$CONTAINER_USER
+       247    
+       248 -        # After user exits, save home directory to persistent volume
+       248 +        # Save home directory AFTER user exits
+       249          echo \"Saving authentication data...\"
+       250          mkdir -p /home-persist/\$CONTAINER_USER
+       251          cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+     ...
+       282    fi
+       283    ```
+       284    
+       285 -  ### 6. Handle flag conflicts
+       286 -  
+       287 -  Add validation after argument parsing:
+       285 +  #### Mode 4: Debug + Verbose (with debug, with logging)
+       286    ```bash
+       287 -  # Validate flag combinations
+       288 -  if [ "$VERBOSE" = true ] && [ "$DEBUG" = true ]; then
+       289 -    echo "Error: Cannot use --verbose and --debug together"
+       290 -    echo "Use --help for usage information"
+       291 -    exit 1
+       287 +  if [ "$VERBOSE" = true ]; then
+       288 +    log_message "Debug + Verbose mode enabled - full session logged, container persists"
+       289 +  
+       290 +    if command -v script &> /dev/null; then
+       291 +      script -q -f -c "docker run \
+       292 +        -v \"$MOUNTDIR\":/workspace \
+       293 +        -v claude-yolo-home:/home-persist \
+       294 +        -it \
+       295 +        --rm \
+       296 +        claude-yolo:latest \
+       297 +        /bin/bash -c \"
+       298 +          # User setup...
+       299 +          # Restore home directory...
+       300 +  
+       301 +          # Display setup WITH prompt
+       302 +          echo \\\"Press Enter to start Claude Code with --dangerously-skip-permissions\\\"
+       303 +          read
+       304 +  
+       305 +          # Run Claude
+       306 +          su - \\\$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       307 +  
+       308 +          # Drop to PERSISTENT debug shell
+       309 +          echo \\\"\\\"
+       310 +          echo \\\"═══════════════════════════════════════════════════════════════\\\"
+       311 +          echo \\\"Claude exited. Starting debug shell...\\\"
+       312 +          echo \\\"═══════════════════════════════════════════════════════════════\\\"
+       313 +          echo \\\"You are now in the container as \\\$CONTAINER_USER\\\"
+       314 +          echo \\\"Working directory: /workspace\\\"
+       315 +          echo \\\"\\\"
+       316 +          echo \\\"Type 'exit' to save your home directory and leave the container.\\\"
+       317 +          echo \\\"═══════════════════════════════════════════════════════════════\\\"
+       318 +          echo \\\"\\\"
+       319 +  
+       320 +          su -l \\\$CONTAINER_USER
+       321 +  
+       322 +          # Save home directory AFTER user exits
+       323 +          echo \\\"Saving authentication data...\\\"
+       324 +          mkdir -p /home-persist/\\\$CONTAINER_USER
+       325 +          cp -a /home/\\\$CONTAINER_USER/. /home-persist/\\\$CONTAINER_USER/
+       326 +          echo \\\"Done. Exiting container.\\\"
+       327 +        \"" "$LOGFILE"
+       328 +    else
+       329 +      # Fallback without script command (same logic as mode 3)
+       330 +    fi
+       331    fi
+       332    ```
+       333    
+       334 +  ### 5. Code organization strategy
+       335 +  
+       336 +  To avoid massive code duplication, we can use a helper approach:
+       337 +  
+       338 +  ```bash
+       339 +  # Define common container script as a function
+       340 +  build_container_script() {
+       341 +    local WITH_PROMPT=$1
+       342 +    local WITH_DEBUG_SHELL=$2
+       343 +  
+       344 +    cat <<'CONTAINER_SCRIPT'
+       345 +      # User setup (always the same)
+       346 +      EXISTING_USER=$(getent passwd USERID_PLACEHOLDER | cut -d: -f1)
+       347 +      if [ -n "$EXISTING_USER" ]; then
+       348 +        CONTAINER_USER=$EXISTING_USER
+       349 +      else
+       350 +        CONTAINER_USER=USERNAME_PLACEHOLDER
+       351 +        groupadd -g GROUPID_PLACEHOLDER $CONTAINER_USER 2>/dev/null || true
+       352 +        useradd -u USERID_PLACEHOLDER -g GROUPID_PLACEHOLDER -m -s /bin/bash $CONTAINER_USER
+       353 +      fi
+       354 +  
+       355 +      # Restore home directory (always the same)
+       356 +      if [ -d /home-persist/$CONTAINER_USER ]; then
+       357 +        cp -a /home-persist/$CONTAINER_USER/. /home/$CONTAINER_USER/
+       358 +      fi
+       359 +  
+       360 +      # Setup display (varies by WITH_PROMPT)
+       361 +  CONTAINER_SCRIPT
+       362 +  
+       363 +    if [ "$WITH_PROMPT" = true ]; then
+       364 +      cat <<'PROMPT_SCRIPT'
+       365 +      echo "Press Enter to start Claude Code with --dangerously-skip-permissions"
+       366 +      read
+       367 +  PROMPT_SCRIPT
+       368 +    else
+       369 +      cat <<'NO_PROMPT_SCRIPT'
+       370 +      echo "Starting Claude Code with --dangerously-skip-permissions..."
+       371 +  NO_PROMPT_SCRIPT
+       372 +    fi
+       373 +  
+       374 +    cat <<'RUN_CLAUDE'
+       375 +      # Run Claude
+       376 +      su - $CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+       377 +  RUN_CLAUDE
+       378 +  
+       379 +    if [ "$WITH_DEBUG_SHELL" = true ]; then
+       380 +      cat <<'DEBUG_SHELL'
+       381 +      # Debug shell
+       382 +      echo ""
+       383 +      echo "═══════════════════════════════════════════════════════════════"
+       384 +      echo "Claude exited. Starting debug shell..."
+       385 +      echo "═══════════════════════════════════════════════════════════════"
+       386 +      echo "You are now in the container as $CONTAINER_USER"
+       387 +      echo "Working directory: /workspace"
+       388 +      echo ""
+       389 +      echo "Type 'exit' to save your home directory and leave the container."
+       390 +      echo "═══════════════════════════════════════════════════════════════"
+       391 +      echo ""
+       392 +  
+       393 +      su -l $CONTAINER_USER
+       394 +  DEBUG_SHELL
+       395 +    fi
+       396 +  
+       397 +    cat <<'SAVE_HOME'
+       398 +      # Save home directory
+       399 +      mkdir -p /home-persist/$CONTAINER_USER
+       400 +      cp -a /home/$CONTAINER_USER/. /home-persist/$CONTAINER_USER/
+       401 +  SAVE_HOME
+       402 +  }
+       403 +  ```
+       404 +  
+       405 +  **Actually, this function approach is too complex with escaping.** Better to keep the four explicit cases but use a shared 
+           + user setup snippet.
+       406 +  
+       407 +  **Revised approach**: Accept some duplication, keep four clear cases. The user setup and home directory save/restore are 
+           + identical, so those can be referenced in comments to a canonical version.
+       408 +  
+       409 +  ### 6. Remove existing flag conflict check
+       410 +  
+       411 +  The plan previously suggested treating `--verbose` and `--debug` as mutually exclusive. **Remove this** - they should work 
+           + together.
+       412 +  
+       413    ## Edge Cases and Considerations
+       414    
+       415 -  ### 1. Flag Conflicts
+       415 +  ### 1. Flag Combinations
+       416    **Scenario**: User runs `./claude-yo --verbose --debug`
+       417    
+       418 -  **Solution**: Treat as mutually exclusive. Exit with error message.
+       418 +  **Expected behavior**: Debug mode with full session logging (Mode 4)
+       419    
+       420 +  **Implementation**: Both flags set to true, use appropriate branch
+       421 +  
+       422    ### 2. Authentication Persistence
+       423 -  **Scenario**: User doesn't exit cleanly (Ctrl+C, terminal crash)
+       423 +  **Scenario**: User doesn't exit cleanly (Ctrl+C, terminal crash) in debug mode
+       424    
+       425    **Impact**: Home directory save won't run, authentication tokens might not persist
+       426    
+       427    **Mitigation**: Document this limitation. Consider adding signal handlers in future.
+       428    
+       429 -  ### 3. Working Directory
+       429 +  ### 3. Working Directory in Debug Shell
+       430    **Scenario**: User changes directory inside debug shell
+       431    
+       432 -  **Expected behavior**: Fine - they're exploring the container
+       432 +  **Expected behavior**: Fine - they're exploring the container. `su -l` starts in home directory, not /workspace.
+       433    
+       434 -  **Note**: Document that `/workspace` is the mounted project directory
+       434 +  **Note**: Document that `/workspace` is the mounted project directory
+           +  . Users need to `cd /workspace` if they want to work there.
+       435    
+       436 -  ### 4. Multiple Shells
+       437 -  **Scenario**: User runs nested bash sessions in debug shell
+       436 +  ### 4. Logging Debug Shell Activity
+       437 +  **Scenario**: User runs `./claude-yo --debug --verbose` and uses debug shell
+       438    
+       439 -  **Expected behavior**: Each `exit` returns to parent shell until final exit
+       439 +  **Expected behavior**: All debug shell commands are logged (because `script` wrapper captures everything)
+       440    
+       441 -  **Note**: This is standard Unix behavior, no special handling needed
+       441 +  **Benefit**: Complete audit trail of debugging session
+       442    
+       443    ### 5. File Ownership
+       444    **Scenario**: User creates files as root in debug shell
+       445    
+       446    **Risk**: Files created as root won't be accessible on host
+       447    
+       448 -  **Mitigation**: Document that debug shell runs as mapped user
+           -  , not root. Creating files as root requires `sudo` which isn't available in the container.
+       448 +  **Mitigation**: Debug shell runs as mapped user (`su -l $CONTAINER_USER`)
+           +  , not root. Creating files as root requires `sudo` which isn't available in the container.
+       449    
+       450    ## Testing Plan
+       451    
+       452 -  ### Test Case 1: Default Mode (Modified)
+       452 +  ### Test Case 1: Default Mode (no flags)
+       453    ```bash
+       454    ./claude-yo
+       455    # Expected:
+     ...
+       339    # - Claude starts immediately
+       340    # - When Claude exits, container exits (back to host)
+       341    # - No debug shell
+       342 +  # - Log file contains wrapper messages only (~10-15 lines)
+       343    ```
+       344    
+       345 -  ### Test Case 2: Verbose Mode (Modified)
+       345 +  ### Test Case 2: Verbose Mode (`--verbose`)
+       346    ```bash
+       347    ./claude-yo --verbose
+       348    # Expected:
+     ...
+       351    # - Full session logged to file
+       352    # - When Claude exits, container exits (back to host)
+       353    # - No debug shell
+       354 +  # - Log file contains full session (large)
+       355    ```
+       356    
+       357 -  ### Test Case 3: Debug Mode (New)
+       357 +  ### Test Case 3: Debug Mode (`--debug`)
+       358    ```bash
+       359    ./claude-yo --debug
+       360    # Expected:
+     ...
+       362    # - User presses Enter
+       363    # - Claude starts
+       364    # - When Claude exits, debug shell appears
+       365 -  # - User can run commands (ls, pwd, etc.)
+       365 +  # - User can run commands (ls, pwd, cd /workspace, etc.)
+       366    # - User types 'exit'
+       367    # - Home directory is saved
+       368    # - Container exits, returns to host
+       369 +  # - Log file contains wrapper messages only (~15-20 lines)
+       370    ```
+       371    
+       372 -  ### Test Case 4: Flag Conflict
+       372 +  ### Test Case 4: Debug + Verbose Mode (`--debug --verbose`)
+       373    ```bash
+       374 -  ./claude-yo --verbose --debug
+       374 +  ./claude-yo --debug --verbose
+       375    # Expected:
+       376 -  # - Error message: "Cannot use --verbose and --debug together"
+       377 -  # - Exit with status 1
+       376 +  # - "Press Enter" prompt shown
+       377 +  # - Claude starts
+       378 +  # - When Claude exits, debug shell appears
+       379 +  # - User can run commands in debug shell
+       380 +  # - User types 'exit'
+       381 +  # - Home directory is saved
+       382 +  # - Container exits
+       383 +  # - Log file contains EVERYTHING: wrapper, Claude session, AND debug shell commands
+       384    ```
+       385    
+       386    ### Test Case 5: Authentication Persistence in Debug Mode
+     ...
+       392    ```bash
+       393    ./claude-yo --debug
+       394    # Inside debug shell:
+       395 -  touch /workspace/test-file.txt
+       396 -  ls -la /workspace/test-file.txt
+       395 +  cd /workspace
+       396 +  touch test-file.txt
+       397 +  ls -la test-file.txt
+       398    exit
+       399    
+       400    # On host:
+     ...
+       401    # Expected: File exists with host user ownership
+       402    ```
+       403    
+       404 +  ### Test Case 7: Debug Shell Starting Directory
+       405 +  ```bash
+       406 +  ./claude-yo --debug
+       407 +  # Inside debug shell:
+       408 +  pwd
+       409 +  # Expected: /home/$CONTAINER_USER (not /workspace)
+       410 +  # User must `cd /workspace` to work in project directory
+       411 +  ```
+       412 +  
+       413    ## Implementation Checklist
+       414    
+       415    - [ ] Add `DEBUG=false` variable initialization
+       416    - [ ] Add `-d|--debug` case to argument parsing
+       417 -  - [ ] Add debug mode documentation to help text
+       418 -  - [ ] Add flag conflict validation
+       419 -  - [ ] Update log message for debug mode
+       420 -  - [ ] Implement debug mode container execution branch
+       421 -  - [ ] Remove debug shell from default mode
+       422 -  - [ ] Remove debug shell from verbose mode (both script and fallback)
+       423 -  - [ ] Test all three modes independently
+       424 -  - [ ] Test flag conflict handling
+       417 +  - [ ] Update help text with debug mode documentation and flag combinations
+       418 +  - [ ] Remove any flag conflict validation between debug and verbose
+       419 +  - [ ] Implement Mode 1: Default (no debug, no verbose)
+       420 +  - [ ] Implement Mode 2: Verbose only (no debug, with logging) - remove debug shell
+       421 +  - [ ] Implement Mode 3: Debug only (with debug, no logging)
+       422 +  - [ ] Implement Mode 4: Debug + Verbose (with debug, with logging)
+       423 +  - [ ] Handle fallback case when `script` command unavailable (for modes 2 and 4)
+       424 +  - [ ] Test all four modes independently
+       425 +  - [ ] Test flag combinations work correctly
+       426 +  - [ ] Verify authentication persistence in all modes
+       427 +  - [ ] Verify file ownership in debug shell
+       428    - [ ] Update TASKS.md to mark debug feature complete
+       429 +  - [ ] Update README.md with debug mode documentation
+       430 +  - [ ] Update CLAUDE.md to clarify debug shell is debug-mode-only
+       431    
+       432    ## Documentation Updates
+       433    
+       434    After implementation, update:
+       435    
+       436 -  1. **README.md**: Add debug mode explanation
+       437 -  2. **CLAUDE.md**: Update "Debug Shell Access" section to clarify it's debug-mode-only
+       438 -  3. **TASKS.md**: Mark debug task as complete
+       436 +  1. **README.md**:
+       437 +     - Add debug mode explanation
+       438 +     - Show flag combination examples
+       439 +     - Explain use cases for each mode
+       440    
+       441 +  2. **CLAUDE.md**:
+       442 +     - Update "Debug Shell Access" section to clarify it's debug-mode-only
+       443 +     - Add note about `su -l` starting in home directory (not /workspace)
+       444 +  
+       445 +  3. **TASKS.md**:
+       446 +     - Mark debug task as complete
+       447 +     - Note that debug and verbose can be combined
+       448 +  
+       449    ## Future Enhancements (Out of Scope)
+       450    
+       451 -  - Signal handlers to ensure home directory save on Ctrl+C
+       451 +  - Signal handlers to ensure home directory save on Ctrl+C in debug mode
+       452    - `--no-persist` flag to skip home directory save (faster testing)
+       453    - Automatic cleanup of old authentication tokens
+       454    - Container naming to allow multiple simultaneous sessions
+       455 +  - `cd /workspace` automatically when entering debug shell
+       456 +  - Color-coded mode indicators in prompts
+       457    
+       458    ## Summary
+       459    
+       460 -  The debug mode adds a third operational mode to `claude-yo`:
+       460 +  The debug mode adds a second dimension to `claude-yo` operation:
+       461    
+       462 -  1. **Default**: Fast, clean, automatic exit after Claude
+       463 -  2. **Verbose**: Full logging, automatic exit after Claude
+       464 -  3. **Debug**: Interactive control, persistent shell for exploration
+       462 +  **Two orthogonal flags**:
+       463 +  - `--debug`: Controls container lifecycle (exit immediately vs persistent shell)
+       464 +  - `--verbose`: Controls logging depth (wrapper only vs full session)
+       465    
+       466 -  Key implementation points:
+       466 +  **Four possible modes**:
+       467 +  1. **Default**: Fast, clean, automatic exit
+       468 +  2. **Verbose only**: Session logging, automatic exit
+       469 +  3. **Debug only**: Persistent shell, wrapper logging
+       470 +  4. **Debug + Verbose**: Persistent shell, full session logging
+       471 +  
+       472 +  **Key implementation points**:
+       473 +  - Flags are NOT mutually exclusive - users can combine them
+       474    - Sequential `su` calls (Claude, then shell) instead of nested
+       475 -  - Explicit flag conflict validation
+       475    - Clear user messaging about what mode they're in
+       476    - Home directory save happens after debug shell exit
+       477 +  - Four explicit branches to handle all combinations clearly
+       478    
+       479 -  This complements the existing modes while keeping the common use case (default) fast and simple.
+       479 +  This design maximizes flexibility while keeping the default fast and simple.
+
+● Perfect! I've updated the plan to treat --debug and --verbose as orthogonal, combinable flags. Here's what changed:
+
+  Key Updates to the Plan:
+
+  Orthogonal Design:
+  - Debug mode controls container lifecycle (immediate exit vs persistent shell)
+  - Verbose mode controls logging depth (wrapper messages vs full session)
+  - Users can combine them for different workflows
+
+  Four Distinct Modes:
+  1. Default (./claude-yo) - Fast, no debug shell, wrapper logging
+  2. Verbose only (./claude-yo --verbose) - Full session logging, no debug shell
+  3. Debug only (./claude-yo --debug) - Persistent shell, wrapper logging
+  4. Debug + Verbose (./claude-yo --debug --verbose) - Persistent shell + full session logging
+
+  Implementation Changes:
+  - Removed flag conflict validation (was going to reject --debug --verbose)
+  - Restructured as a 2x2 matrix: if DEBUG then if VERBOSE...
+  - Mode 4 (debug + verbose) uses script wrapper around docker run with debug shell inside
+  - All four modes explicitly implemented with clear use cases
+
+  Use Case for Combined Mode:
+  When a user wants to debug an issue AND have a complete audit trail of their session for later review. The log file will capture:
+  - All wrapper messages
+  - Claude Code session output
+  - Debug shell commands and their output
+  - Everything the user does
+
+  This gives maximum flexibility while keeping the default mode fast and simple. Ready to implement when you are!
+
+
+

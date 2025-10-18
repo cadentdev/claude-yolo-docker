@@ -14,6 +14,10 @@
 - [x] Add a "verbose" option (`-v` or `--verbose`)
   - Default mode: skip "Press Enter" prompt, no Docker session logging (fast workflow)
   - Verbose mode: show "Press Enter" prompt, log full session (debugging)
+- [x] Add a "debug" option (-d or --debug)
+  - Debug mode: user must press Enter, persistent container shell after Claude exits
+  - Default mode: no "Press Enter" prompt, immediate exit to host after Claude
+  - Flags can be combined: --debug --verbose for persistent shell with full logging
 - [ ] Fix bash terminal control warnings (cannot set terminal process group, no job control)
 - [ ] Add an output message to confirm an existing container is detected
 
