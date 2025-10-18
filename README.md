@@ -14,6 +14,7 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - **User Mapping**: Files created by Claude maintain your user ownership
 - **Interactive Mode**: Drop directly into Claude Code's CLI prompt
 - **Debug Shell**: Access container shell after Claude exits for troubleshooting
+- **Session Logging**: Automatic logging of all sessions with verbose mode for full capture
 
 ## Prerequisites
 
@@ -89,6 +90,24 @@ The `--rebuild` flag will:
 - Install the latest version of Claude Code
 - Preserve your authentication (no need to log in again)
 
+**Enable verbose mode (full session logging):**
+```bash
+claude-yo --verbose
+# or
+claude-yo -v
+```
+
+The `--verbose` flag will:
+- Show a "Press Enter" prompt before starting Claude (time to review container setup)
+- Log the complete Docker session including all Claude Code output
+- Create larger log files useful for debugging issues
+- Use the `script` command to capture terminal output with ANSI codes
+
+**Combine flags:**
+```bash
+claude-yo --rebuild --verbose  # Rebuild and run with verbose logging
+```
+
 ### Updating Claude Code
 
 To get the latest version of Claude Code, simply rebuild the Docker image:
@@ -109,6 +128,90 @@ This is the recommended way to update Claude Code, as it ensures you're always r
    - Restores authentication from previous sessions (if available)
    - Runs `claude --dangerously-skip-permissions` as that user
    - Saves authentication data back to the volume when you exit
+
+## Session Logging
+
+All `claude-yo` sessions are automatically logged to help with debugging and tracking script operations.
+
+### Log Location
+
+Logs are stored in: `~/.claude-yolo/logs/`
+
+Each session creates a timestamped log file: `claude-yolo-YYYY-MM-DD-HHMMSS.log`
+
+### Default Mode (Fast & Clean)
+
+By default, `claude-yo` logs only wrapper script operations:
+- Build output (when building or rebuilding the Docker image)
+- Container setup information (user, UID/GID, working directory)
+- Error messages from the script or Docker
+- **Does NOT log** Claude Code session output or debug shell commands
+
+**Benefits:**
+- Small, readable log files (~10-15 lines typically)
+- Easy to review build errors or script issues
+- Container setup info for debugging UID/permission issues
+- Minimal disk space usage
+- Faster startup (no "Press Enter" prompt)
+
+**Example log contents:**
+```
+Session log: /home/user/.claude-yolo/logs/claude-yolo-2025-10-17-143522.log
+═══════════════════════════════════════════════════════════════
+Container Setup
+═══════════════════════════════════════════════════════════════
+Container user:      user
+UID:GID:             1000:1000
+Working directory:   /home/user/my-project
+                     → mounted at /workspace
+═══════════════════════════════════════════════════════════════
+```
+
+### Verbose Mode (Full Session Capture)
+
+Run with `--verbose` to capture everything:
+```bash
+claude-yo --verbose
+```
+
+**What gets logged:**
+- Everything from default mode
+- Full Claude Code session output (all messages, responses, file changes)
+- Debug shell commands and output
+- Terminal control sequences and ANSI color codes
+
+**Benefits:**
+- Complete session trace for debugging
+- Reproduce what happened during a Claude session
+- Share logs with others for troubleshooting
+
+**Trade-offs:**
+- Large log files (can be thousands of lines)
+- Includes terminal control codes (may be hard to read)
+- Shows "Press Enter" prompt before starting (gives time to review setup)
+
+### Viewing Logs
+
+**List all session logs:**
+```bash
+ls -lh ~/.claude-yolo/logs/
+```
+
+**View the most recent log:**
+```bash
+cat ~/.claude-yolo/logs/$(ls -t ~/.claude-yolo/logs/ | head -1)
+```
+
+**Search logs for errors:**
+```bash
+grep -i error ~/.claude-yolo/logs/*.log
+```
+
+**Clean up old logs:**
+```bash
+# Remove logs older than 30 days
+find ~/.claude-yolo/logs/ -name "*.log" -mtime +30 -delete
+```
 
 ## Important Security Notes
 
