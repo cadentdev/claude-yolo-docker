@@ -1,5 +1,8 @@
 FROM node:20-bookworm-slim
 
+# Remove the node user to prevent UID collision with host users
+RUN userdel -r node
+
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code
 

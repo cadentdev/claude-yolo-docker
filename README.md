@@ -20,6 +20,7 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - Docker installed and running
 - Bash shell
 - Claude account (you'll authenticate in-container on first run)
+- **For initial authentication**: GUI environment with browser access (SSH sessions without X11 forwarding won't work for first-time auth)
 
 ## Installation
 
@@ -60,7 +61,9 @@ cd ~/my-project
 claude-yo
 ```
 
-On first run, you'll be prompted to authenticate with your Claude account. After that, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
+On first run, you'll be prompted to authenticate with your Claude account. **Note:** Authentication requires opening a browser, so your first run must be in a GUI environment (not over SSH without X11 forwarding). Once authenticated, the session persists in a Docker volume, so subsequent runs work fine over SSH.
+
+After authentication, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
 
 When you exit Claude (type `/exit`), you'll drop into a bash shell inside the container for debugging. Type `exit` again to leave the container.
 
@@ -121,6 +124,11 @@ The container provides isolation, but Claude still has unrestricted access to wh
 ## Troubleshooting
 
 **Image won't build**: Check that Docker is running and you have internet access for npm packages.
+
+**Authentication fails over SSH**: Claude Code authentication requires browser access. For first-time authentication:
+- Run `claude-yo` from a local terminal in a GUI environment, OR
+- Use SSH with X11 forwarding enabled (`ssh -X` or `ssh -Y`), OR
+- Authenticate on a different machine first, then copy the `claude-yolo-home` volume to your SSH server
 
 **Authentication not persisting**: The auth data is stored in a Docker volume named `claude-yolo-home`. Check it exists with `docker volume ls`. To reset authentication, remove the volume: `docker volume rm claude-yolo-home`
 
