@@ -6,6 +6,12 @@ A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` i
 
 This project creates a safe, isolated Docker container for running Claude Code in "YOLO mode" (skipping permission prompts). The container only has access to your current project directory, protecting the rest of your system.
 
+## Philosopy
+
+- **Keep it simple**: the container and launch script are intendend for one thing: run YOLO Claude Code in a restricted environment. So the container only contains one external tool: Claude Code. If you want to work with other tools like Git, do that work before you launch the container. Otherwise, the container comes with a **very basic set** of Linux tools, like `ls` and `grep`.
+- **Keep it fast**: the Docker container is built in a way to reduce size and ensure the fastest possible load times. The default options in the script get you right into Claude Code without delay.
+- **Helpful options for advanced use**: the script includes options to help you troubleshoot, like `--rebuild` to get the latest version of Claude Code, `--logging` to save a log of your session to the host computer, `--debug` to help troubleshoot, and other handy options. See below for details.
+
 ## Features
 
 - **Isolation**: Claude Code runs in a Docker container, not directly on your host
