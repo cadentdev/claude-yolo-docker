@@ -28,6 +28,23 @@ This approach allows authentication to persist across container runs and differe
 ### Debug Shell Access
 After Claude exits, the container drops into an interactive bash shell (`claude-yo:96-105`). This allows users to inspect the container state, test commands, or debug issues before the container is removed.
 
+### Per-Project Customization
+Projects can include a `.claude-yo.yml` file to specify additional tools and packages. The wrapper script:
+1. Detects `.claude-yo.yml` in the mounted project directory
+2. Validates the YAML syntax and security (no shell metacharacters)
+3. Generates a project-specific Dockerfile extending `claude-yolo:latest` (or custom base)
+4. Builds and caches the project image with a hash-based tag
+5. Uses the project image instead of the base image for that session
+
+The YAML schema supports:
+- `base`: Custom Docker base image (e.g., `python:3.12-slim-bookworm`). When specified, Node.js and Claude Code are automatically installed.
+- `apt`: System packages via apt-get
+- `pip`: Python packages (requires python3-pip in apt, or use a Python base image)
+- `npm`: Global npm packages
+- `run`: Custom shell commands
+
+Image caching uses the pattern `claude-yolo-project:<project-name>-<config-hash>` to ensure rebuilds happen only when the config changes.
+
 ## Common Commands
 
 ### Building and Running

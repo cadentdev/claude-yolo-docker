@@ -20,6 +20,21 @@ for arg in "$@"; do
       echo "The container will mount your current directory as the workspace."
       echo "Authentication data persists across runs in a Docker volume."
       echo ""
+      echo "Per-Project Customization:"
+      echo "  Create a .claude-yo.yml file in your project root to install additional tools:"
+      echo ""
+      echo "    base: python:3.12-slim-bookworm  # Custom base image (optional)"
+      echo "    apt:                    # System packages"
+      echo "      - git"
+      echo "    pip:                    # Python packages"
+      echo "      - pytest"
+      echo "    npm:                    # Global npm packages"
+      echo "      - typescript"
+      echo "    run:                    # Custom commands"
+      echo "      - \"echo hello\""
+      echo ""
+      echo "  Use 'base:' for Python/other language projects (Node.js auto-installed)."
+      echo ""
       echo "Examples:"
       echo "  claude-yo                      # Fast workflow (default)"
       echo "  claude-yo --verbose            # Full session logging"
@@ -62,6 +77,107 @@ log_message() {
   echo "$@" | tee -a "$LOGFILE"
 }
 
+# =============================================================================
+# Per-Project Configuration Functions
+# =============================================================================
+
+# Validate config file syntax and security
+validate_config() {
+  local config_file="$1"
+
+  # Check YAML syntax using yq in a container
+  if ! docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.' /config.yml > /dev/null 2>&1; then
+    log_message "Error: Invalid YAML syntax in .claude-yo.yml"
+    return 1
+  fi
+
+  # Validate package names don't contain dangerous characters
+  local content=$(cat "$config_file")
+  if echo "$content" | grep -qE '[;&|`$]'; then
+    log_message "Error: Invalid characters in .claude-yo.yml (shell metacharacters not allowed)"
+    return 1
+  fi
+
+  return 0
+}
+
+# Generate project-specific Dockerfile
+generate_project_dockerfile() {
+  local config_file="$1"
+  local output_file="$2"
+
+  # Check if custom base image is specified (strip quotes and whitespace)
+  local base_image=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
+
+  if [ -n "$base_image" ]; then
+    # Custom base image - need to install Node.js and Claude Code
+    echo "FROM $base_image" > "$output_file"
+    echo "" >> "$output_file"
+    echo "# Install Node.js and Claude Code (required for claude-yo)" >> "$output_file"
+    echo "RUN apt-get update && \\" >> "$output_file"
+    echo "    apt-get install -y curl yq && \\" >> "$output_file"
+    echo "    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \\" >> "$output_file"
+    echo "    apt-get install -y nodejs && \\" >> "$output_file"
+    echo "    rm -rf /var/lib/apt/lists/* && \\" >> "$output_file"
+    echo "    npm install -g @anthropic-ai/claude-code" >> "$output_file"
+    echo "" >> "$output_file"
+  else
+    # No custom base - extend the pre-built claude-yolo image
+    echo "FROM claude-yolo:latest" > "$output_file"
+    echo "" >> "$output_file"
+  fi
+
+  # apt packages
+  local apt_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.apt[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  if [ -n "$apt_packages" ]; then
+    echo "RUN apt-get update && apt-get install -y $apt_packages && rm -rf /var/lib/apt/lists/*" >> "$output_file"
+  fi
+
+  # pip packages
+  local pip_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.pip[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  if [ -n "$pip_packages" ]; then
+    echo "RUN pip3 install --break-system-packages $pip_packages" >> "$output_file"
+  fi
+
+  # npm packages
+  local npm_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.npm[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  if [ -n "$npm_packages" ]; then
+    echo "RUN npm install -g $npm_packages" >> "$output_file"
+  fi
+
+  # Custom RUN commands
+  docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.run[]' /config.yml 2>/dev/null | while read -r cmd; do
+    if [ -n "$cmd" ]; then
+      echo "RUN $cmd" >> "$output_file"
+    fi
+  done
+
+  echo "" >> "$output_file"
+  echo "WORKDIR /workspace" >> "$output_file"
+}
+
+# Get project image name from directory
+get_project_image_name() {
+  local mount_dir="$1"
+  local project_name=$(basename "$mount_dir" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
+  echo "claude-yolo-project:$project_name"
+}
+
+# Get config hash for cache invalidation
+get_config_hash() {
+  local config_file="$1"
+  if command -v sha256sum &> /dev/null; then
+    sha256sum "$config_file" 2>/dev/null | cut -c1-8
+  elif command -v shasum &> /dev/null; then
+    shasum -a 256 "$config_file" 2>/dev/null | cut -c1-8
+  else
+    # Fallback: use file modification time
+    stat -f %m "$config_file" 2>/dev/null || stat -c %Y "$config_file" 2>/dev/null
+  fi
+}
+
+# =============================================================================
+
 # Get host user info
 USERID=$(id -u)
 GROUPID=$(id -g)
@@ -80,24 +196,94 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 # Notify user of log location
 log_message "Session log: $LOGFILE"
 
-# Handle rebuild or normal build
+# =============================================================================
+# Build Logic - Base Image and Project-Specific Images
+# =============================================================================
+
+# Configuration file path
+CONFIG_FILE="$MOUNTDIR/.claude-yo.yml"
+DOCKER_IMAGE="claude-yolo:latest"
+
+# Handle rebuild or normal build of base image
 if [ "$REBUILD" = true ]; then
-  log_message "Removing existing image..."
+  log_message "Removing existing base image..."
   docker rmi claude-yolo:latest 2>&1 | tee -a "$LOGFILE" || true
-  log_message "Building image from scratch (no cache)..."
+  log_message "Building base image from scratch (no cache)..."
   if ! docker build --no-cache -t claude-yolo:latest "$SCRIPT_DIR" 2>&1 | tee -a "$LOGFILE"; then
     log_message "Error: Docker build failed. Please check the error messages above."
     exit 1
   fi
-  log_message "Build complete!"
+  log_message "Base image build complete!"
 elif [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" == "" ]]; then
-  log_message "Building Docker image (first run only)..."
+  log_message "Building Docker base image (first run only)..."
   if ! docker build -t claude-yolo:latest "$SCRIPT_DIR" 2>&1 | tee -a "$LOGFILE"; then
     log_message "Error: Docker build failed. Please check the error messages above."
     exit 1
   fi
-  log_message "Build complete!"
+  log_message "Base image build complete!"
 fi
+
+# Check for project-specific configuration
+if [ -f "$CONFIG_FILE" ]; then
+  log_message "Found project configuration: .claude-yo.yml"
+
+  # Validate the config file
+  if ! validate_config "$CONFIG_FILE"; then
+    exit 1
+  fi
+
+  # Generate project image name with hash for caching
+  PROJECT_IMAGE=$(get_project_image_name "$MOUNTDIR")
+  CONFIG_HASH=$(get_config_hash "$CONFIG_FILE")
+  CACHE_TAG="${PROJECT_IMAGE}-${CONFIG_HASH}"
+
+  # Handle rebuild of project image
+  if [ "$REBUILD" = true ]; then
+    log_message "Removing cached project image..."
+    docker rmi "$CACHE_TAG" 2>&1 | tee -a "$LOGFILE" || true
+  fi
+
+  # Check if cached project image exists
+  if [[ "$(docker images -q "$CACHE_TAG" 2> /dev/null)" == "" ]]; then
+    log_message "Building project-specific image..."
+
+    # Generate and build project Dockerfile
+    TEMP_DOCKERFILE=$(mktemp)
+    generate_project_dockerfile "$CONFIG_FILE" "$TEMP_DOCKERFILE"
+
+    log_message "Generated Dockerfile:"
+    cat "$TEMP_DOCKERFILE" | tee -a "$LOGFILE"
+    log_message ""
+
+    if ! docker build -t "$CACHE_TAG" -f "$TEMP_DOCKERFILE" "$SCRIPT_DIR" 2>&1 | tee -a "$LOGFILE"; then
+      log_message ""
+      log_message "═══════════════════════════════════════════════════════════════"
+      log_message "Project-specific build failed. Common issues:"
+      log_message "  - Package name typo (check apt/pip/npm package names)"
+      log_message "  - Missing dependency (pip packages may need apt packages first)"
+      log_message "  - Custom RUN command syntax error"
+      log_message "═══════════════════════════════════════════════════════════════"
+      rm "$TEMP_DOCKERFILE"
+      exit 1
+    fi
+
+    rm "$TEMP_DOCKERFILE"
+
+    # Clean up old cached images for this project (different hash)
+    docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | \
+      grep "^${PROJECT_IMAGE}-" | \
+      grep -v "$CACHE_TAG" | \
+      xargs -r docker rmi 2>/dev/null || true
+
+    log_message "Project image built: $CACHE_TAG"
+  else
+    log_message "Using cached project image: $CACHE_TAG"
+  fi
+
+  DOCKER_IMAGE="$CACHE_TAG"
+fi
+
+# =============================================================================
 
 # Log container setup information to file only (container will display on console)
 # This avoids duplicate output since the container script always shows this info
@@ -122,7 +308,7 @@ if [ "$DEBUG" = true ]; then
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        claude-yolo:latest \
+        $DOCKER_IMAGE \
         /bin/bash -c \"
           # Find if a user with our UID already exists
           EXISTING_USER=\\\$(getent passwd $USERID | cut -d: -f1)
@@ -184,7 +370,7 @@ if [ "$DEBUG" = true ]; then
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        claude-yolo:latest \
+        $DOCKER_IMAGE \
         /bin/bash -c "
           # Find if a user with our UID already exists
           EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
@@ -248,7 +434,7 @@ if [ "$DEBUG" = true ]; then
       -v claude-yolo-home:/home-persist \
       -it \
       --rm \
-      claude-yolo:latest \
+      $DOCKER_IMAGE \
       /bin/bash -c "
         # Find if a user with our UID already exists
         EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
@@ -314,7 +500,7 @@ else
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        claude-yolo:latest \
+        $DOCKER_IMAGE \
         /bin/bash -c \"
           # Find if a user with our UID already exists
           EXISTING_USER=\\\$(getent passwd $USERID | cut -d: -f1)
@@ -360,7 +546,7 @@ else
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        claude-yolo:latest \
+        $DOCKER_IMAGE \
         /bin/bash -c "
           # Find if a user with our UID already exists
           EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
@@ -406,7 +592,7 @@ else
       -v claude-yolo-home:/home-persist \
       -it \
       --rm \
-      claude-yolo:latest \
+      $DOCKER_IMAGE \
       /bin/bash -c "
         # Find if a user with our UID already exists
         EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)

@@ -22,6 +22,80 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - **Debug Mode**: Optional persistent shell access after Claude exits for exploration and troubleshooting
 - **Session Logging**: Automatic logging of all sessions with verbose mode for full capture
 - **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing)
+- **Per-Project Customization**: Install project-specific tools via `.claude-yo.yml` config file
+
+## Per-Project Customization
+
+You can customize the Docker environment for each project by creating a `.claude-yo.yml` file in your project root. This is useful when your project requires specific tools like Python, additional npm packages, or custom dependencies.
+
+### Example Configuration
+
+```yaml
+# .claude-yo.yml - all sections are optional
+
+# System packages installed via apt-get
+apt:
+  - python3
+  - python3-pip
+  - git
+  - curl
+
+# Python packages (requires python3-pip in apt section)
+pip:
+  - pytest
+  - black
+  - mypy
+
+# Global npm packages
+npm:
+  - typescript
+  - eslint
+
+# Custom shell commands (escape hatch for advanced users)
+run:
+  - "curl -sSL https://install.python-poetry.org | python3 -"
+```
+
+### Using a Custom Base Image
+
+For Python-heavy projects, you can specify a custom base image to avoid installing Python via apt:
+
+```yaml
+# .claude-yo.yml - Python project example
+base: python:3.12-slim-bookworm
+
+pip:
+  - poetry
+  - pytest
+```
+
+When you specify `base:`, claude-yo will:
+1. Start from your specified image instead of the Node.js base
+2. Automatically install Node.js 20 and Claude Code
+3. Apply your apt/pip/npm/run customizations
+
+**Supported base images**: Any Debian-based image (e.g., `python:3.12-slim-bookworm`, `ruby:3.2-bookworm`). Alpine-based images are not currently supported.
+
+### How It Works
+
+1. When you run `claude-yo`, it checks for `.claude-yo.yml` in the current directory
+2. If found, it generates a project-specific Docker image extending the base image (or your custom `base:`)
+3. The project image is cached based on a hash of your config file
+4. Subsequent runs use the cached image for fast startup
+5. When you modify `.claude-yo.yml`, the image is automatically rebuilt
+
+### Image Caching
+
+- Project images are tagged like `claude-yolo-project:myproject-a1b2c3d4`
+- The hash suffix ensures config changes trigger a rebuild
+- Old cached images for the same project are automatically cleaned up
+- Use `--rebuild` to force a fresh build of both base and project images
+
+### Tips
+
+- **pip requires python**: If you use the `pip` section, include `python3-pip` in your `apt` section
+- **Keep configs in version control**: Commit your `.claude-yo.yml` so team members get the same environment
+- **Use `run` sparingly**: Prefer `apt`, `pip`, and `npm` sections when possible for better caching
 
 ## Prerequisites
 

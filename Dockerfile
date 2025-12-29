@@ -3,6 +3,11 @@ FROM node:20-bookworm-slim
 # Remove the node user to prevent UID collision with host users
 RUN userdel -r node
 
+# Install yq for YAML parsing (used by project config feature)
+RUN apt-get update && \
+    apt-get install -y yq && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code
 
