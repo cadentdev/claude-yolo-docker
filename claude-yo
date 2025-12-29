@@ -67,7 +67,15 @@ USERID=$(id -u)
 GROUPID=$(id -g)
 USERNAME=$(whoami)
 MOUNTDIR=$(pwd)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve symlinks to find the actual script directory (where Dockerfile lives)
+SCRIPT_SOURCE="$0"
+while [ -L "$SCRIPT_SOURCE" ]; do
+  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+  SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+  # Handle relative symlinks
+  [[ "$SCRIPT_SOURCE" != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 
 # Notify user of log location
 log_message "Session log: $LOGFILE"

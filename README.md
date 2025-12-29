@@ -6,11 +6,11 @@ A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` i
 
 This project creates a safe, isolated Docker container for running Claude Code in "YOLO mode" (skipping permission prompts). The container only has access to your current project directory, protecting the rest of your system.
 
-## Philosopy
+## Philosophy
 
 - **Keep it simple**: the container and launch script are intendend for one thing: run YOLO Claude Code in a restricted environment. So the container only contains one external tool: Claude Code. If you want to work with other tools like Git, do that work before you launch the container. Otherwise, the container comes with a **very basic set** of Linux tools, like `ls` and `grep`.
 - **Keep it fast**: the Docker container is built in a way to reduce size and ensure the fastest possible load times. The default options in the script get you right into Claude Code without delay.
-- **Helpful options for advanced use**: the script includes options to help you troubleshoot, like `--rebuild` to get the latest version of Claude Code, `--logging` to save a log of your session to the host computer, `--debug` to help troubleshoot, and other handy options. See below for details.
+- **Helpful options for advanced use**: the script includes options to help you troubleshoot, like `--rebuild` to get the latest version of Claude Code, `--verbose` to save a log of your session to the host computer, `--debug` to help troubleshoot, and other handy options. See below for details.
 
 ## Features
 
@@ -44,11 +44,35 @@ chmod +x claude-yo
 ```
 
 3. (Optional) Add to your PATH or create a symlink:
-```bash
-# Option A: Symlink to a directory in your PATH
-ln -s "$(pwd)/claude-yo" ~/.local/bin/claude-yolo
 
-# Option B: Add this directory to your PATH
+**Check your PATH first**
+
+```bash
+echo $PATH
+```
+
+**Option A:** Symlink to a directory in your PATH
+
+```bash
+# Create ~/.local/bin if it doesn't exist, then symlink
+[ -d "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin"
+ln -s "$(pwd)/claude-yo" "$HOME/.local/bin/claude-yo"
+```
+
+**Note:** Ensure `~/.local/bin` is in your PATH (see Option B below)
+
+**Option B:** Add this directory to your PATH
+
+**macOS (zsh):**
+
+```bash
+echo 'export PATH="$PATH:'$(pwd)'"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Linux (bash):**
+
+```bash
 echo 'export PATH="$PATH:'$(pwd)'"' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -286,7 +310,7 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 ## Troubleshooting
 
-**Image won't build**: Check that Docker is running and you have internet access for npm packages.
+**Image won't build**: Check that Docker is running and you have internet access for npm packages. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
 
 **Authentication fails over SSH**: Claude Code authentication requires browser access. For first-time authentication:
 - Run `claude-yo` from a local terminal in a GUI environment, OR
