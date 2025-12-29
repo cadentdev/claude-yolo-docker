@@ -1,0 +1,1111 @@
+
+ * ▐▛███▜▌ *   Claude Code v2.0.76
+* ▝▜█████▛▘ *  Opus 4.5 · Claude Max
+ *  ▘▘ ▝▝  *   ~/Repos/cadentdev/claude-yolo-docker
+
+  A gift for you
+  Your rate limits are 2x higher through 12/31. Enjoy the extra room to think!
+
+> /clear 
+  ⎿  (no content)
+
+> I'm trying to use this script with a repo that requires Python. This is 
+not part of the Docker configuration, however. Can we update the dockerfile 
+on a per-project basis so our docker images includes any project-specific 
+libraries or tools? 
+
+⏺ I'll explore the codebase to understand the current Docker setup and how we can add per-project customization.
+
+⏺ Explore(Explore Docker setup)
+  ⎿  Done (11 tool uses · 44.1k tokens · 39s)                              
+
+⏺ I now have a good understanding of the codebase. The current setup has a single, global Dockerfile with no per-project customization mechanism.
+
+  Let me clarify your requirements before designing a solution:
+
+⏺ User declined to answer questions
+
+> Since I'm not a Docker expert, I don't know how to answer. I lean toward 
+the YAML solution, because that's easy to commit to the repo, and is very 
+lighweight, and easy to update with a text editor. 
+
+⏺ That makes sense! A YAML config file is the most user-friendly approach. Let me design an implementation plan for this.
+
+⏺ Plan(Design YAML config approach)
+  ⎿  Done (10 tool uses · 37.2k tokens · 14m 19s)                          
+
+⏺ Let me read the critical files to validate the plan, then write the final plan.
+
+⏺ Read(claude-yo)
+  ⎿  Read 449 lines
+
+⏺ Read(Dockerfile)
+  ⎿  Read 15 lines
+
+⏺ Now I have a complete understanding. Let me write the final plan.
+
+⏺ Updated plan
+  ⎿  /plan to preview
+
+⏺ I've written the plan. Here's the summary:
+
+  Plan Overview
+
+  Config file: .claude-yo.yml in your project root with simple sections:
+  - apt: - system packages (python3, git, etc.)
+  - pip: - Python packages (requires python3-pip in apt)
+  - npm: - global npm packages
+  - run: - custom commands (escape hatch for advanced users)
+
+  How it works:
+  1. When you run claude-yo, it checks for .claude-yo.yml in the current directory
+  2. If found, it generates a project-specific Dockerfile that extends the base image
+  3. Builds and caches the project image (tagged with a hash of your config)
+  4. Subsequent runs are fast because the image is cached
+  5. Change your .claude-yo.yml → automatically rebuilds
+
+  Files to modify: Dockerfile, claude-yo, README.md, CLAUDE.md
+
+  Does this approach look good to you, or would you like any changes to the plan?
+                                                                           
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/piped-yawning-scroll.md · /plan to edit
+     Plan: Per-Project Docker Customization via YAML Config
+
+     Summary
+
+     Add support for a .claude-yo.yml config file in project roots that 
+     specifies additional packages/tools to install. Project-specific Docker
+      images are built and cached for fast subsequent runs.
+
+     YAML Schema
+
+     # .claude-yo.yml - all sections optional
+     apt:
+       - python3
+       - python3-pip
+       - git
+
+     pip:
+       - pytest
+       - black
+
+     npm:
+       - typescript
+
+     run:
+       - "curl -sSL https://example.com/install.sh | bash"
+
+     Files to Modify
+
+     1. Dockerfile
+
+     Add yq for YAML parsing:
+     RUN apt-get update && apt-get install -y yq && rm -rf 
+     /var/lib/apt/lists/*
+
+     2. claude-yo (main changes)
+
+     Add new functions (~60 lines):
+     - parse_yaml_section() - Extract package lists using yq
+     - generate_project_dockerfile() - Create Dockerfile extending base 
+     image
+     - get_project_image_name() - Generate tag from directory name + config 
+     hash
+     - validate_config() - Check YAML syntax and package name safety
+
+     Modify build logic (lines 83-100):
+     1. Check for .claude-yo.yml in $MOUNTDIR
+     2. If found:
+       - Ensure base image claude-yolo:latest exists
+       - Generate hash from config file contents
+       - Check if cached project image exists with matching hash
+       - If not, generate and build project-specific Dockerfile
+       - Clean up old cached images for same project
+     3. Set $DOCKER_IMAGE variable to either project image or base image
+
+     Update docker run commands:
+     Replace hardcoded claude-yolo:latest with $DOCKER_IMAGE variable (8 
+     locations in lines 120-447)
+
+     3. README.md
+
+     Add section documenting the .claude-yo.yml feature
+
+     4. CLAUDE.md
+
+     Document the new feature for future Claude sessions
+
+     Image Naming & Caching
+
+     - Base image: claude-yolo:latest
+     - Project images: claude-yolo-project:myproject-a1b2c3d4 (name + 8-char
+      config hash)
+     - Cache invalidation: Config hash changes trigger rebuild
+     - --rebuild flag: Rebuilds both base and current project image
+
+     Implementation Order
+
+     1. Update Dockerfile (add yq)
+     2. Add YAML parsing functions to claude-yo
+     3. Add Dockerfile generation function
+     4. Add project image naming/caching logic
+     5. Modify build logic to detect and handle .claude-yo.yml
+     6. Replace hardcoded image name with variable in all docker run calls
+     7. Update help text
+     8. Update README.md and CLAUDE.md
+
+
+⏺ Let me set up the task list and start implementing.
+
+⏺ Update(Dockerfile)
+  ⎿  Added 5 lines                                                       
+       3  # Remove the node user to prevent UID collision with host      
+          users                                                          
+       4  RUN userdel -r node                                            
+       5                                                                 
+       6 +# Install yq for YAML parsing (used by project config feature) 
+       7 +RUN apt-get update && \                                        
+       8 +    apt-get install -y yq && \                                 
+       9 +    rm -rf /var/lib/apt/lists/*                                
+      10 +                                                               
+      11  # Install Claude Code globally                                 
+      12  RUN npm install -g @anthropic-ai/claude-code                   
+      13                                                                 
+
+⏺ Now I'll add the core functions to claude-yo. I'll add them after the log_message function:
+
+⏺ Update(claude-yo)
+  ⎿  Added 83 lines                                                      
+       62    echo "$@" | tee -a "$LOGFILE"                               
+       63  }                                                             
+       64                                                                
+       65 +# =========================================================== 
+          +==================                                            
+       66 +# Per-Project Configuration Functions                         
+       67 +# =========================================================== 
+          +==================                                            
+       68 +                                                              
+       69 +# Validate config file syntax and security                    
+       70 +validate_config() {                                           
+       71 +  local config_file="$1"                                      
+       72 +                                                              
+       73 +  # Check YAML syntax using yq in a container                 
+       74 +  if ! docker run --rm -v "$config_file:/config.yml:ro"       
+          +claude-yolo:latest yq '.' /config.yml > /dev/null 2>&1; then  
+       75 +    log_message "Error: Invalid YAML syntax in                
+          +.claude-yo.yml"                                               
+       76 +    return 1                                                  
+       77 +  fi                                                          
+       78 +                                                              
+       79 +  # Validate package names don't contain dangerous characters 
+       80 +  local content=$(cat "$config_file")                         
+       81 +  if echo "$content" | grep -qE '[;&|`$]'; then               
+       82 +    log_message "Error: Invalid characters in .claude-yo.yml  
+          +(shell metacharacters not allowed)"                           
+       83 +    return 1                                                  
+       84 +  fi                                                          
+       85 +                                                              
+       86 +  return 0                                                    
+       87 +}                                                             
+       88 +                                                              
+       89 +# Generate project-specific Dockerfile                        
+       90 +generate_project_dockerfile() {                               
+       91 +  local config_file="$1"                                      
+       92 +  local output_file="$2"                                      
+       93 +                                                              
+       94 +  echo "FROM claude-yolo:latest" > "$output_file"             
+       95 +  echo "" >> "$output_file"                                   
+       96 +                                                              
+       97 +  # apt packages                                              
+       98 +  local apt_packages=$(docker run --rm -v                     
+          +"$config_file:/config.yml:ro" claude-yolo:latest yq '.apt[]'  
+          +/config.yml 2>/dev/null | tr '\n' ' ')                        
+       99 +  if [ -n "$apt_packages" ]; then                             
+      100 +    echo "RUN apt-get update && apt-get install -y            
+          +$apt_packages && rm -rf /var/lib/apt/lists/*" >>              
+          +"$output_file"                                                
+      101 +  fi                                                          
+      102 +                                                              
+      103 +  # pip packages                                              
+      104 +  local pip_packages=$(docker run --rm -v                     
+          +"$config_file:/config.yml:ro" claude-yolo:latest yq '.pip[]'  
+          +/config.yml 2>/dev/null | tr '\n' ' ')                        
+      105 +  if [ -n "$pip_packages" ]; then                             
+      106 +    echo "RUN pip3 install --break-system-packages            
+          +$pip_packages" >> "$output_file"                              
+      107 +  fi                                                          
+      108 +                                                              
+      109 +  # npm packages                                              
+      110 +  local npm_packages=$(docker run --rm -v                     
+          +"$config_file:/config.yml:ro" claude-yolo:latest yq '.npm[]'  
+          +/config.yml 2>/dev/null | tr '\n' ' ')                        
+      111 +  if [ -n "$npm_packages" ]; then                             
+      112 +    echo "RUN npm install -g $npm_packages" >> "$output_file" 
+      113 +  fi                                                          
+      114 +                                                              
+      115 +  # Custom RUN commands                                       
+      116 +  docker run --rm -v "$config_file:/config.yml:ro"            
+          +claude-yolo:latest yq '.run[]' /config.yml 2>/dev/null |      
+          +while read -r cmd; do                                         
+      117 +    if [ -n "$cmd" ]; then                                    
+      118 +      echo "RUN $cmd" >> "$output_file"                       
+      119 +    fi                                                        
+      120 +  done                                                        
+      121 +                                                              
+      122 +  echo "" >> "$output_file"                                   
+      123 +  echo "WORKDIR /workspace" >> "$output_file"                 
+      124 +}                                                             
+      125 +                                                              
+      126 +# Get project image name from directory                       
+      127 +get_project_image_name() {                                    
+      128 +  local mount_dir="$1"                                        
+      129 +  local project_name=$(basename "$mount_dir" | tr '[:upper:]' 
+          + '[:lower:]' | sed 's/[^a-z0-9]/-/g')                         
+      130 +  echo "claude-yolo-project:$project_name"                    
+      131 +}                                                             
+      132 +                                                              
+      133 +# Get config hash for cache invalidation                      
+      134 +get_config_hash() {                                           
+      135 +  local config_file="$1"                                      
+      136 +  if command -v sha256sum &> /dev/null; then                  
+      137 +    sha256sum "$config_file" 2>/dev/null | cut -c1-8          
+      138 +  elif command -v shasum &> /dev/null; then                   
+      139 +    shasum -a 256 "$config_file" 2>/dev/null | cut -c1-8      
+      140 +  else                                                        
+      141 +    # Fallback: use file modification time                    
+      142 +    stat -f %m "$config_file" 2>/dev/null || stat -c %Y       
+          +"$config_file" 2>/dev/null                                    
+      143 +  fi                                                          
+      144 +}                                                             
+      145 +                                                              
+      146 +# =========================================================== 
+          +==================                                            
+      147 +                                                              
+      148  # Get host user info                                          
+      149  USERID=$(id -u)                                               
+      150  GROUPID=$(id -g)                                              
+
+⏺ Read(claude-yo)
+  ⎿  Read 60 lines
+
+⏺ Now I'll replace the build logic to handle project-specific images:
+
+⏺ Update(claude-yo)
+  ⎿  Added 76 lines, removed 6 lines                                     
+      163  # Notify user of log location                                 
+      164  log_message "Session log: $LOGFILE"                           
+      165                                                                
+      166 -# Handle rebuild or normal build                              
+      166 +# =========================================================== 
+          +==================                                            
+      167 +# Build Logic - Base Image and Project-Specific Images        
+      168 +# =========================================================== 
+          +==================                                            
+      169 +                                                              
+      170 +# Configuration file path                                     
+      171 +CONFIG_FILE="$MOUNTDIR/.claude-yo.yml"                        
+      172 +DOCKER_IMAGE="claude-yolo:latest"                             
+      173 +                                                              
+      174 +# Handle rebuild or normal build of base image                
+      175  if [ "$REBUILD" = true ]; then                                
+      176 -  log_message "Removing existing image..."                    
+      176 +  log_message "Removing existing base image..."               
+      177    docker rmi claude-yolo:latest 2>&1 | tee -a "$LOGFILE" ||   
+           true                                                          
+      178 -  log_message "Building image from scratch (no cache)..."     
+      178 +  log_message "Building base image from scratch (no cache)..."
+      179    if ! docker build --no-cache -t claude-yolo:latest          
+           "$SCRIPT_DIR" 2>&1 | tee -a "$LOGFILE"; then                  
+      180      log_message "Error: Docker build failed. Please check the 
+            error messages above."                                       
+      181      exit 1                                                    
+      182    fi                                                          
+      183 -  log_message "Build complete!"                               
+      183 +  log_message "Base image build complete!"                    
+      184  elif [[ "$(docker images -q claude-yolo:latest 2> /dev/null)" 
+            == "" ]]; then                                               
+      185 -  log_message "Building Docker image (first run only)..."     
+      185 +  log_message "Building Docker base image (first run only)..."
+      186    if ! docker build -t claude-yolo:latest "$SCRIPT_DIR" 2>&1  
+           | tee -a "$LOGFILE"; then                                     
+      187      log_message "Error: Docker build failed. Please check the 
+            error messages above."                                       
+      188      exit 1                                                    
+      189    fi                                                          
+      190 -  log_message "Build complete!"                               
+      190 +  log_message "Base image build complete!"                    
+      191  fi                                                            
+      192                                                                
+      193 +# Check for project-specific configuration                    
+      194 +if [ -f "$CONFIG_FILE" ]; then                                
+      195 +  log_message "Found project configuration: .claude-yo.yml"   
+      196 +                                                              
+      197 +  # Validate the config file                                  
+      198 +  if ! validate_config "$CONFIG_FILE"; then                   
+      199 +    exit 1                                                    
+      200 +  fi                                                          
+      201 +                                                              
+      202 +  # Generate project image name with hash for caching         
+      203 +  PROJECT_IMAGE=$(get_project_image_name "$MOUNTDIR")         
+      204 +  CONFIG_HASH=$(get_config_hash "$CONFIG_FILE")               
+      205 +  CACHE_TAG="${PROJECT_IMAGE}-${CONFIG_HASH}"                 
+      206 +                                                              
+      207 +  # Handle rebuild of project image                           
+      208 +  if [ "$REBUILD" = true ]; then                              
+      209 +    log_message "Removing cached project image..."            
+      210 +    docker rmi "$CACHE_TAG" 2>&1 | tee -a "$LOGFILE" || true  
+      211 +  fi                                                          
+      212 +                                                              
+      213 +  # Check if cached project image exists                      
+      214 +  if [[ "$(docker images -q "$CACHE_TAG" 2> /dev/null)" == "" 
+          + ]]; then                                                     
+      215 +    log_message "Building project-specific image..."          
+      216 +                                                              
+      217 +    # Generate and build project Dockerfile                   
+      218 +    TEMP_DOCKERFILE=$(mktemp)                                 
+      219 +    generate_project_dockerfile "$CONFIG_FILE"                
+          +"$TEMP_DOCKERFILE"                                            
+      220 +                                                              
+      221 +    log_message "Generated Dockerfile:"                       
+      222 +    cat "$TEMP_DOCKERFILE" | tee -a "$LOGFILE"                
+      223 +    log_message ""                                            
+      224 +                                                              
+      225 +    if ! docker build -t "$CACHE_TAG" -f "$TEMP_DOCKERFILE"   
+          +"$SCRIPT_DIR" 2>&1 | tee -a "$LOGFILE"; then                  
+      226 +      log_message ""                                          
+      227 +      log_message "══════════════════════════════════════════ 
+          +═════════════════════"                                        
+      228 +      log_message "Project-specific build failed. Common      
+          +issues:"                                                      
+      229 +      log_message "  - Package name typo (check apt/pip/npm   
+          +package names)"                                               
+      230 +      log_message "  - Missing dependency (pip packages may   
+          +need apt packages first)"                                     
+      231 +      log_message "  - Custom RUN command syntax error"       
+      232 +      log_message "══════════════════════════════════════════ 
+          +═════════════════════"                                        
+      233 +      rm "$TEMP_DOCKERFILE"                                   
+      234 +      exit 1                                                  
+      235 +    fi                                                        
+      236 +                                                              
+      237 +    rm "$TEMP_DOCKERFILE"                                     
+      238 +                                                              
+      239 +    # Clean up old cached images for this project (different  
+          +hash)                                                         
+      240 +    docker images --format '{{.Repository}}:{{.Tag}}'         
+          +2>/dev/null | \                                               
+      241 +      grep "^${PROJECT_IMAGE}-" | \                           
+      242 +      grep -v "$CACHE_TAG" | \                                
+      243 +      xargs -r docker rmi 2>/dev/null || true                 
+      244 +                                                              
+      245 +    log_message "Project image built: $CACHE_TAG"             
+      246 +  else                                                        
+      247 +    log_message "Using cached project image: $CACHE_TAG"      
+      248 +  fi                                                          
+      249 +                                                              
+      250 +  DOCKER_IMAGE="$CACHE_TAG"                                   
+      251 +fi                                                            
+      252 +                                                              
+      253 +# =========================================================== 
+          +==================                                            
+      254 +                                                              
+      255  # Log container setup information to file only (container     
+           will display on console)                                      
+      256  # This avoids duplicate output since the container script     
+           always shows this info                                        
+      257  echo "═══════════════════════════════════════════════════════ 
+           ════════" >> "$LOGFILE"                                       
+
+⏺ Search(pattern: "claude-yolo:latest", path: "claude-yo", output_mode:
+        "content")
+  ⎿  Found 17 lines (ctrl+o to expand)
+
+⏺ I need to replace claude-yolo:latest with $DOCKER_IMAGE in the docker run commands (lines 278, 340, 404, 470, 516, 562). Let me do each one:
+
+⏺ Read(claude-yo)
+  ⎿  Read 20 lines
+
+⏺ Update(claude-yo)
+  ⎿  Added 2 lines, removed 2 lines                                      
+      275          -v claude-yolo-home:/home-persist \                   
+      276          -it \                                                 
+      277          --rm \                                                
+      278 -        claude-yolo:latest \                                  
+      278 +        $DOCKER_IMAGE \                                       
+      279          /bin/bash -c \"                                       
+      280            # Find if a user with our UID already exists        
+      281            EXISTING_USER=\\\$(getent passwd $USERID | cut -d:  
+           -f1)                                                          
+     ...
+      467          -v claude-yolo-home:/home-persist \                   
+      468          -it \                                                 
+      469          --rm \                                                
+      470 -        claude-yolo:latest \                                  
+      470 +        $DOCKER_IMAGE \                                       
+      471          /bin/bash -c \"                                       
+      472            # Find if a user with our UID already exists        
+      473            EXISTING_USER=\\\$(getent passwd $USERID | cut -d:  
+           -f1)                                                          
+
+⏺ Update(claude-yo)
+  ⎿  Added 2 lines, removed 2 lines                                      
+      337          -v claude-yolo-home:/home-persist \                   
+      338          -it \                                                 
+      339          --rm \                                                
+      340 -        claude-yolo:latest \                                  
+      340 +        $DOCKER_IMAGE \                                       
+      341          /bin/bash -c "                                        
+      342            # Find if a user with our UID already exists        
+      343            EXISTING_USER=\$(getent passwd $USERID | cut -d:    
+           -f1)                                                          
+     ...
+      513          -v claude-yolo-home:/home-persist \                   
+      514          -it \                                                 
+      515          --rm \                                                
+      516 -        claude-yolo:latest \                                  
+      516 +        $DOCKER_IMAGE \                                       
+      517          /bin/bash -c "                                        
+      518            # Find if a user with our UID already exists        
+      519            EXISTING_USER=\$(getent passwd $USERID | cut -d:    
+           -f1)                                                          
+
+⏺ Search(pattern: "claude-yolo:latest", path: "claude-yo", output_mode:
+        "content")
+  ⎿  Found 13 lines (ctrl+o to expand)
+
+⏺ Read(claude-yo)
+  ⎿  Read 15 lines
+
+⏺ Update(claude-yo)
+  ⎿  Added 2 lines, removed 2 lines                                      
+      401        -v claude-yolo-home:/home-persist \                     
+      402        -it \                                                   
+      403        --rm \                                                  
+      404 -      claude-yolo:latest \                                    
+      404 +      $DOCKER_IMAGE \                                         
+      405        /bin/bash -c "                                          
+      406          # Find if a user with our UID already exists          
+      407          EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1) 
+     ...
+      559        -v claude-yolo-home:/home-persist \                     
+      560        -it \                                                   
+      561        --rm \                                                  
+      562 -      claude-yolo:latest \                                    
+      562 +      $DOCKER_IMAGE \                                         
+      563        /bin/bash -c "                                          
+      564          # Find if a user with our UID already exists          
+      565          EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1) 
+
+⏺ Search(pattern: "claude-yolo:latest", path: "claude-yo", output_mode:
+        "content")
+  ⎿  Found 11 lines (ctrl+o to expand)
+
+⏺ All docker run commands now use $DOCKER_IMAGE. The remaining references to claude-yolo:latest are correct (helper functions using yq, and base image build logic).
+
+⏺ Read(claude-yo)
+  ⎿  Read 35 lines
+
+⏺ Update(claude-yo)
+  ⎿  Added 13 lines                                                      
+      20        echo "The container will mount your current directory as 
+           the workspace."                                               
+      21        echo "Authentication data persists across runs in a      
+          Docker volume."                                                
+      22        echo ""                                                  
+      23 +      echo "Per-Project Customization:"                        
+      24 +      echo "  Create a .claude-yo.yml file in your project     
+         +root to install additional tools:"                             
+      25 +      echo ""                                                  
+      26 +      echo "    apt:                    # System packages"     
+      27 +      echo "      - python3"                                   
+      28 +      echo "      - python3-pip"                               
+      29 +      echo "    pip:                    # Python packages      
+         +(requires python3-pip)"                                        
+      30 +      echo "      - pytest"                                    
+      31 +      echo "    npm:                    # Global npm packages" 
+      32 +      echo "      - typescript"                                
+      33 +      echo "    run:                    # Custom commands"     
+      34 +      echo "      - \"echo hello\""                            
+      35 +      echo ""                                                  
+      36        echo "Examples:"                                         
+      37        echo "  claude-yo                      # Fast workflow   
+          (default)"                                                     
+      38        echo "  claude-yo --verbose            # Full session    
+          logging"                                                       
+
+⏺ Read(README.md)
+  ⎿  Read 351 lines
+
+⏺ Let me add a section about per-project customization to the README:
+
+⏺ Update(README.md)
+  ⎿  Added 54 lines                                                      
+      22  - **Debug Mode**: Optional persistent shell access after       
+          Claude exits for exploration and troubleshooting               
+      23  - **Session Logging**: Automatic logging of all sessions with  
+          verbose mode for full capture                                  
+      24  - **Flexible Workflows**: Combine flags for different use      
+          cases (fast, debugging, auditing)                              
+      25 +- **Per-Project Customization**: Install project-specific      
+         +tools via `.claude-yo.yml` config file                         
+      26                                                                 
+      27 +## Per-Project Customization                                   
+      28 +                                                               
+      29 +You can customize the Docker environment for each project by   
+         +creating a `.claude-yo.yml` file in your project root. This is 
+         + useful when your project requires specific tools like Python, 
+         + additional npm packages, or custom dependencies.              
+      30 +                                                               
+      31 +### Example Configuration                                      
+      32 +                                                               
+      33 +```yaml                                                        
+      34 +# .claude-yo.yml - all sections are optional                   
+      35 +                                                               
+      36 +# System packages installed via apt-get                        
+      37 +apt:                                                           
+      38 +  - python3                                                    
+      39 +  - python3-pip                                                
+      40 +  - git                                                        
+      41 +  - curl                                                       
+      42 +                                                               
+      43 +# Python packages (requires python3-pip in apt section)        
+      44 +pip:                                                           
+      45 +  - pytest                                                     
+      46 +  - black                                                      
+      47 +  - mypy                                                       
+      48 +                                                               
+      49 +# Global npm packages                                          
+      50 +npm:                                                           
+      51 +  - typescript                                                 
+      52 +  - eslint                                                     
+      53 +                                                               
+      54 +# Custom shell commands (escape hatch for advanced users)      
+      55 +run:                                                           
+      56 +  - "curl -sSL https://install.python-poetry.org | python3 -"  
+      57 +```                                                            
+      58 +                                                               
+      59 +### How It Works                                               
+      60 +                                                               
+      61 +1. When you run `claude-yo`, it checks for `.claude-yo.yml` in 
+         + the current directory                                         
+      62 +2. If found, it generates a project-specific Docker image      
+         +extending the base image                                       
+      63 +3. The project image is cached based on a hash of your config  
+         +file                                                           
+      64 +4. Subsequent runs use the cached image for fast startup       
+      65 +5. When you modify `.claude-yo.yml`, the image is              
+         +automatically rebuilt                                          
+      66 +                                                               
+      67 +### Image Caching                                              
+      68 +                                                               
+      69 +- Project images are tagged like                               
+         +`claude-yolo-project:myproject-a1b2c3d4`                       
+      70 +- The hash suffix ensures config changes trigger a rebuild     
+      71 +- Old cached images for the same project are automatically     
+         +cleaned up                                                     
+      72 +- Use `--rebuild` to force a fresh build of both base and      
+         +project images                                                 
+      73 +                                                               
+      74 +### Tips                                                       
+      75 +                                                               
+      76 +- **pip requires python**: If you use the `pip` section,       
+         +include `python3-pip` in your `apt` section                    
+      77 +- **Keep configs in version control**: Commit your             
+         +`.claude-yo.yml` so team members get the same environment      
+      78 +- **Use `run` sparingly**: Prefer `apt`, `pip`, and `npm`      
+         +sections when possible for better caching                      
+      79 +                                                               
+      80  ## Prerequisites                                               
+      81                                                                 
+      82  - Docker installed and running                                 
+
+⏺ Now let me update CLAUDE.md:
+
+⏺ Read(CLAUDE.md)
+  ⎿  Read 93 lines
+
+⏺ Update(CLAUDE.md)
+  ⎿  Added 16 lines                                                      
+      28  ### Debug Shell Access                                         
+      29  After Claude exits, the container drops into an interactive    
+          bash shell (`claude-yo:96-105`). This allows users to inspect  
+          the container state, test commands, or debug issues before the 
+           container is removed.                                         
+      30                                                                 
+      31 +### Per-Project Customization                                  
+      32 +Projects can include a `.claude-yo.yml` file to specify        
+         +additional tools and packages. The wrapper script:             
+      33 +1. Detects `.claude-yo.yml` in the mounted project directory   
+      34 +2. Validates the YAML syntax and security (no shell            
+         +metacharacters)                                                
+      35 +3. Generates a project-specific Dockerfile extending           
+         +`claude-yolo:latest`                                           
+      36 +4. Builds and caches the project image with a hash-based tag   
+      37 +5. Uses the project image instead of the base image for that   
+         +session                                                        
+      38 +                                                               
+      39 +The YAML schema supports:                                      
+      40 +- `apt`: System packages via apt-get                           
+      41 +- `pip`: Python packages (requires python3-pip in apt)         
+      42 +- `npm`: Global npm packages                                   
+      43 +- `run`: Custom shell commands                                 
+      44 +                                                               
+      45 +Image caching uses the pattern                                 
+         +`claude-yolo-project:<project-name>-<config-hash>` to ensure   
+         +rebuilds happen only when the config changes.                  
+      46 +                                                               
+      47  ## Common Commands                                             
+      48                                                                 
+      49  ### Building and Running                                       
+
+⏺ All done! Here's a summary of the changes:
+
+  Implementation Complete
+
+  Files Modified:
+
+  1. Dockerfile - Added yq for YAML parsing
+  2. claude-yo - Added:
+    - validate_config() - Validates YAML syntax and security
+    - generate_project_dockerfile() - Creates Dockerfile extending base image
+    - get_project_image_name() - Generates image tag from directory name
+    - get_config_hash() - Creates hash for cache invalidation
+    - New build logic to detect .claude-yo.yml and build project-specific images
+    - Updated all docker run commands to use $DOCKER_IMAGE variable
+    - Updated help text with config file documentation
+  3. README.md - Added "Per-Project Customization" section with:
+    - Example configuration
+    - How it works explanation
+    - Image caching details
+    - Tips for usage
+  4. CLAUDE.md - Added documentation for the new feature
+
+  How to Use
+
+  Create a .claude-yo.yml in your project:
+
+  apt:
+    - python3
+    - python3-pip
+  pip:
+    - pytest
+
+  Then run claude-yo as normal. The first run will build a project-specific image (cached for subsequent runs). Use --rebuild to force a fresh build.
+
+> After a few updates to the .claude-yo.yml` file I was able to run my 
+python tests. In cases like this, it may be better to start with a different
+ docker base. Here's what your colleage recommended: ⏺ Yes, that would make
+ sense. Using a Python base image would:
+  - Eliminate the apt section entirely
+  - Make builds faster (fewer packages to install)
+  - Ensure a consistent Python version
+
+  The question is whether claude-yo supports specifying a custom base image.
+ Based on the documentation you shared, I didn't see that option mentioned.
+
+  If claude-yo supports it, the config could be simplified to something 
+like:
+
+  # Using python:3.12 as base would eliminate apt section
+  image: python:3.12
+
+  pip:
+    - poetry
+
+  Options to explore:
+  1. Check if claude-yo has an image: or base: configuration option
+  2. Check if the claude-yo base image already includes Python (many Docker 
+dev images do)
+  3. Open a feature request on the claude-yo repo if this isn't supported" 
+
+⏺ Good feedback! Supporting a custom base image would make Python-heavy projects much cleaner. Here's how we could implement it:
+
+  Proposed .claude-yo.yml enhancement:
+
+  # Use Python base instead of Node.js
+  base: python:3.12-bookworm-slim
+
+  pip:
+    - poetry
+    - pytest
+
+  How it would work:
+
+  1. When base: is specified, the generated Dockerfile starts from that image
+  2. It installs Node.js (required for Claude Code) if not present
+  3. Installs Claude Code
+  4. Applies any additional apt/pip/npm/run customizations
+
+  Trade-offs:
+  - First build is slower (needs to install Node.js into Python image)
+  - But subsequent runs use cached project image
+  - Cleaner config for Python projects
+
+  Would you like me to implement this? The changes would be:
+
+  1. Update generate_project_dockerfile() to handle custom base images
+  2. Add Node.js installation step when base isn't claude-yolo:latest
+  3. Update documentation
+                                                                           
+⏺ User answered Claude's questions:
+  ⎿  · Should I implement custom base image support for .claude-yo.yml? → 
+     Yes, implement it
+
+⏺ Read(claude-yo)
+  ⎿  Read 50 lines
+
+⏺ Update(claude-yo)
+  ⎿  Added 20 lines, removed 2 lines                                     
+      104    local config_file="$1"                                      
+      105    local output_file="$2"                                      
+      106                                                                
+      107 -  echo "FROM claude-yolo:latest" > "$output_file"             
+      108 -  echo "" >> "$output_file"                                   
+      107 +  # Check if custom base image is specified                   
+      108 +  local base_image=$(docker run --rm -v                       
+          +"$config_file:/config.yml:ro" claude-yolo:latest yq '.base // 
+          + ""' /config.yml 2>/dev/null | tr -d '\n')                    
+      109                                                                
+      110 +  if [ -n "$base_image" ]; then                               
+      111 +    # Custom base image - need to install Node.js and Claude  
+          +Code                                                          
+      112 +    echo "FROM $base_image" > "$output_file"                  
+      113 +    echo "" >> "$output_file"                                 
+      114 +    echo "# Install Node.js and Claude Code (required for     
+          +claude-yo)" >> "$output_file"                                 
+      115 +    echo "RUN apt-get update && \\" >> "$output_file"         
+      116 +    echo "    apt-get install -y curl yq && \\" >>            
+          +"$output_file"                                                
+      117 +    echo "    curl -fsSL                                      
+          +https://deb.nodesource.com/setup_20.x | bash - && \\" >>      
+          +"$output_file"                                                
+      118 +    echo "    apt-get install -y nodejs && \\" >>             
+          +"$output_file"                                                
+      119 +    echo "    rm -rf /var/lib/apt/lists/* && \\" >>           
+          +"$output_file"                                                
+      120 +    echo "    npm install -g @anthropic-ai/claude-code" >>    
+          +"$output_file"                                                
+      121 +    echo "" >> "$output_file"                                 
+      122 +  else                                                        
+      123 +    # No custom base - extend the pre-built claude-yolo image 
+      124 +    echo "FROM claude-yolo:latest" > "$output_file"           
+      125 +    echo "" >> "$output_file"                                 
+      126 +  fi                                                          
+      127 +                                                              
+      128    # apt packages                                              
+      129    local apt_packages=$(docker run --rm -v                     
+           "$config_file:/config.yml:ro" claude-yolo:latest yq '.apt[]'  
+           /config.yml 2>/dev/null | tr '\n' ' ')                        
+      130    if [ -n "$apt_packages" ]; then                             
+
+⏺ Now let me update the help text to include the base: option:
+
+⏺ Read(claude-yo)
+  ⎿  Read 30 lines
+
+⏺ Update(claude-yo)
+  ⎿  Added 5 lines, removed 3 lines                                      
+      23        echo "Per-Project Customization:"                        
+      24        echo "  Create a .claude-yo.yml file in your project     
+          root to install additional tools:"                             
+      25        echo ""                                                  
+      26 +      echo "    base: python:3.12-slim  # Custom base image    
+         +(optional)"                                                    
+      27        echo "    apt:                    # System packages"     
+      28 -      echo "      - python3"                                   
+      29 -      echo "      - python3-pip"                               
+      30 -      echo "    pip:                    # Python packages      
+         -(requires python3-pip)"                                        
+      28 +      echo "      - git"                                       
+      29 +      echo "    pip:                    # Python packages"     
+      30        echo "      - pytest"                                    
+      31        echo "    npm:                    # Global npm packages" 
+      32        echo "      - typescript"                                
+      33        echo "    run:                    # Custom commands"     
+      34        echo "      - \"echo hello\""                            
+      35        echo ""                                                  
+      36 +      echo "  Use 'base:' for Python/other language projects   
+         +(Node.js auto-installed)."                                     
+      37 +      echo ""                                                  
+      38        echo "Examples:"                                         
+      39        echo "  claude-yo                      # Fast workflow   
+          (default)"                                                     
+      40        echo "  claude-yo --verbose            # Full session    
+          logging"                                                       
+
+⏺ Now let me update the README.md documentation:
+
+⏺ Update(README.md)
+  ⎿  Added 21 lines, removed 1 line                                      
+      56    - "curl -sSL https://install.python-poetry.org | python3 -"  
+      57  ```                                                            
+      58                                                                 
+      59 +### Using a Custom Base Image                                  
+      60 +                                                               
+      61 +For Python-heavy projects, you can specify a custom base image 
+         + to avoid installing Python via apt:                           
+      62 +                                                               
+      63 +```yaml                                                        
+      64 +# .claude-yo.yml - Python project example                      
+      65 +base: python:3.12-bookworm-slim                                
+      66 +                                                               
+      67 +pip:                                                           
+      68 +  - poetry                                                     
+      69 +  - pytest                                                     
+      70 +```                                                            
+      71 +                                                               
+      72 +When you specify `base:`, claude-yo will:                      
+      73 +1. Start from your specified image instead of the Node.js base 
+      74 +2. Automatically install Node.js 20 and Claude Code            
+      75 +3. Apply your apt/pip/npm/run customizations                   
+      76 +                                                               
+      77 +**Supported base images**: Any Debian-based image (bookworm,   
+         +bullseye, slim variants). Alpine-based images are not          
+         +currently supported.                                           
+      78 +                                                               
+      79  ### How It Works                                               
+      80                                                                 
+      81  1. When you run `claude-yo`, it checks for `.claude-yo.yml` in 
+           the current directory                                         
+      82 -2. If found, it generates a project-specific Docker image      
+         -extending the base image                                       
+      82 +2. If found, it generates a project-specific Docker image      
+         +extending the base image (or your custom `base:`)              
+      83  3. The project image is cached based on a hash of your config  
+          file                                                           
+      84  4. Subsequent runs use the cached image for fast startup       
+      85  5. When you modify `.claude-yo.yml`, the image is              
+          automatically rebuilt                                          
+
+⏺ Now let me update CLAUDE.md:
+
+⏺ Update(CLAUDE.md)
+  ⎿  Added 3 lines, removed 2 lines                                      
+      32  Projects can include a `.claude-yo.yml` file to specify        
+          additional tools and packages. The wrapper script:             
+      33  1. Detects `.claude-yo.yml` in the mounted project directory   
+      34  2. Validates the YAML syntax and security (no shell            
+          metacharacters)                                                
+      35 -3. Generates a project-specific Dockerfile extending           
+         -`claude-yolo:latest`                                           
+      35 +3. Generates a project-specific Dockerfile extending           
+         +`claude-yolo:latest` (or custom base)                          
+      36  4. Builds and caches the project image with a hash-based tag   
+      37  5. Uses the project image instead of the base image for that   
+          session                                                        
+      38                                                                 
+      39  The YAML schema supports:                                      
+      40 +- `base`: Custom Docker base image (e.g.,                      
+         +`python:3.12-bookworm-slim`). When specified, Node.js and      
+         +Claude Code are automatically installed.                       
+      41  - `apt`: System packages via apt-get                           
+      42 -- `pip`: Python packages (requires python3-pip in apt)         
+      42 +- `pip`: Python packages (requires python3-pip in apt          
+         +, or use a Python base image)                                  
+      43  - `npm`: Global npm packages                                   
+      44  - `run`: Custom shell commands                                 
+      45                                                                 
+
+⏺ Done! Custom base image support is now implemented.
+
+  Summary
+
+  Your Python project config can now be simplified from:
+
+  # Before - needed to install Python via apt
+  apt:
+    - python3
+    - python3-pip
+    - python3-venv
+  pip:
+    - poetry
+    - pytest
+
+  To:
+
+  # After - cleaner with Python base image
+  base: python:3.12-bookworm-slim
+
+  pip:
+    - poetry
+    - pytest
+
+  What happens when you use base::
+  1. The generated Dockerfile starts FROM python:3.12-bookworm-slim (or whatever you specify)
+  2. Node.js 20 is automatically installed via NodeSource
+  3. Claude Code is installed via npm
+  4. Your pip/npm/apt/run customizations are applied
+  5. The image is cached for fast subsequent runs
+
+  Trade-off: First build with a custom base takes longer (~1-2 min) since it installs Node.js, but subsequent runs use the cached image.
+
+> There were problems: "#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.12-bookworm-slim
+#3 ERROR: docker.io/library/python:3.12-bookworm-slim: not found
+------
+ > [internal] load metadata for docker.io/library/python:3.12-bookworm-slim:
+------
+tmp.KkpNWYm4HE:1
+--------------------
+   1 | >>> FROM "python:3.12-bookworm-slim"
+   2 |     
+   3 |     # Install Node.js and Claude Code (required for claude-yo)
+--------------------
+ERROR: failed to build: failed to solve: python:3.12-bookworm-slim: failed 
+to resolve source metadata for docker.io/library/python:3.12-bookworm-slim: 
+docker.io/library/python:3.12-bookworm-slim: not found
+Untagged: claude-yolo-project:xplat-1d704fdc
+Deleted: 
+sha256:2ba58e503762af3e2a03594f3ceab051308ce54b9be46ac92d43e5f11f003759
+Project image built: claude-yolo-project:xplat-ce3fab06
+Unable to find image 'claude-yolo-project:xplat-ce3fab06' locally
+docker: Error response from daemon: pull access denied for 
+claude-yolo-project, repository does not exist or may require 'docker login'
+
+Run 'docker run --help' for more information" 
+
+⏺ Two issues here:
+
+  1. Wrong image name format - It's python:3.12-slim-bookworm not python:3.12-bookworm-slim
+  2. Quotes in FROM - The generated Dockerfile has FROM "python:..." instead of FROM python:...
+
+  Let me fix both:
+
+⏺ Read(claude-yo)
+  ⎿  Read 20 lines
+
+⏺ Update(claude-yo)
+  ⎿  Added 2 lines, removed 2 lines                                      
+      106    local config_file="$1"                                      
+      107    local output_file="$2"                                      
+      108                                                                
+      109 -  # Check if custom base image is specified                   
+      110 -  local base_image=$(docker run --rm -v                       
+          -"$config_file:/config.yml:ro" claude-yolo:latest yq '.base // 
+          -""' /config.yml 2>/dev/null | tr -d '\n')                     
+      109 +  # Check if custom base image is specified                   
+          + (strip quotes and whitespace)                                
+      110 +  local base_image=$(docker run --rm -v                       
+          +"$config_file:/config.yml:ro" claude-yolo:latest yq '.base // 
+          +""' /config.yml 2>/dev/null | tr -d '\n"'"'")                 
+      111                                                                
+      112    if [ -n "$base_image" ]; then                               
+      113      # Custom base image - need to install Node.js and Claude  
+           Code                                                          
+
+⏺ Now let me fix the image name in the documentation (it's slim-bookworm not bookworm-slim):
+
+⏺ Update(README.md)
+  ⎿  Added 2 lines, removed 2 lines                                      
+      62                                                                 
+      63  ```yaml                                                        
+      64  # .claude-yo.yml - Python project example                      
+      65 -base: python:3.12-bookworm-slim                                
+      65 +base: python:3.12-slim-bookworm                                
+      66                                                                 
+      67  pip:                                                           
+      68    - poetry                                                     
+     ...
+      74  2. Automatically install Node.js 20 and Claude Code            
+      75  3. Apply your apt/pip/npm/run customizations                   
+      76                                                                 
+      77 -**Supported base images**: Any Debian-based image (bookworm,   
+         -bullseye, slim variants                                        
+         -). Alpine-based images are not currently supported.            
+      77 +**Supported base images**: Any Debian-based image (e.g.,       
+         +`python:3.12-slim-bookworm`, `ruby:3.2-bookworm`               
+         +). Alpine-based images are not currently supported.            
+      78                                                                 
+      79  ### How It Works                                               
+      80                                                                 
+
+⏺ Update(claude-yo)
+  ⎿  Added 1 line, removed 1 line                                        
+      23        echo "Per-Project Customization:"                        
+      24        echo "  Create a .claude-yo.yml file in your project     
+          root to install additional tools:"                             
+      25        echo ""                                                  
+      26 -      echo "    base: python:3.12-slim                         
+         -  # Custom base image (optional)"                              
+      26 +      echo "    base: python:3.12-slim-bookworm                
+         +  # Custom base image (optional)"                              
+      27        echo "    apt:                    # System packages"     
+      28        echo "      - git"                                       
+      29        echo "    pip:                    # Python packages"     
+
+⏺ Update(CLAUDE.md)
+  ⎿  Added 1 line, removed 1 line                                        
+      37  5. Uses the project image instead of the base image for that   
+          session                                                        
+      38                                                                 
+      39  The YAML schema supports:                                      
+      40 -- `base`: Custom Docker base image (e.g., `python:3.12-        
+         -bookworm-slim                                                  
+         -`). When specified, Node.js and Claude Code are automatically  
+         -installed.                                                     
+      40 +- `base`: Custom Docker base image (e.g., `python:3.12-slim    
+         +-bookworm                                                      
+         +`). When specified, Node.js and Claude Code are automatically  
+         +installed.                                                     
+      41  - `apt`: System packages via apt-get                           
+      42  - `pip`: Python packages (requires python3-pip in apt, or use  
+          a Python base image)                                           
+      43  - `npm`: Global npm packages                                   
+
+⏺ Fixed both issues:
+
+  1. Quotes stripped - The code now removes quotes from the base image value
+  2. Correct image name - Updated all docs to use python:3.12-slim-bookworm (the correct Docker Hub naming)
+
+  Update your .claude-yo.yml to:
+
+  base: python:3.12-slim-bookworm
+
+  Then run claude-yo --rebuild to try again.
+
+> Looks like it worked! I'll have to try it with different projects. In the 
+meantime, let's commit and push our work to the remote 
+
+⏺ Bash(git status)
+  ⎿  On branch symlink                               
+     Your branch is up to date with 'origin/symlink'.
+     … +13 lines (ctrl+o to expand)
+
+⏺ Bash(git diff --stat)
+  ⎿   CLAUDE.md  |  17 +++++                 
+      Dockerfile |   5 ++
+      README.md  |  74 ++++++++++++++++++++++
+     … +3 lines (ctrl+o to expand)
+
+⏺ Bash(git log --oneline -5)
+  ⎿  2cd3f74 fix: resolve symlinks when finding Dockerfile location
+     d5a7a76 Update docs, add new tasks
+     136a8e5 feat: add debug mode, refine verbose and logging modes
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git add CLAUDE.md Dockerfile README.md claude-yo && git commit -m "feat:
+      add per-project customization via .claude-yo.yml…)
+  ⎿ [symlink 32a6cff] feat: add per-project customization via .claude-yo.ym
+    l
+     4 files changed, 294 insertions(+), 12 deletions(-)
+
+
+⏺ Bash(git push)
+  ⎿  To github.com:cadentdev/claude-yolo-docker.git
+        2cd3f74..32a6cff  symlink -> symlink
+
+⏺ Done! Committed and pushed to symlink branch:
+
+  32a6cff feat: add per-project customization via .claude-yo.yml
+
+  Summary of changes:
+  - 4 files modified, +294/-12 lines
+  - Dockerfile - Added yq for YAML parsing
+  - claude-yo - Added config detection, Dockerfile generation, caching logic
+  - README.md - Full documentation for the feature
+  - CLAUDE.md - Architecture notes for future Claude sessions
+
+
+
