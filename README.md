@@ -6,11 +6,12 @@ A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` i
 
 This project creates a safe, isolated Docker container for running Claude Code in "YOLO mode" (skipping permission prompts). The container only has access to your current project directory, protecting the rest of your system.
 
-## Philosopy
+## Philosophy
 
-- **Keep it simple**: the container and launch script are intendend for one thing: run YOLO Claude Code in a restricted environment. So the container only contains one external tool: Claude Code. If you want to work with other tools like Git, do that work before you launch the container. Otherwise, the container comes with a **very basic set** of Linux tools, like `ls` and `grep`.
-- **Keep it fast**: the Docker container is built in a way to reduce size and ensure the fastest possible load times. The default options in the script get you right into Claude Code without delay.
-- **Helpful options for advanced use**: the script includes options to help you troubleshoot, like `--rebuild` to get the latest version of Claude Code, `--logging` to save a log of your session to the host computer, `--debug` to help troubleshoot, and other handy options. See below for details.
+- **Keep it simple**: The container and launch script are intended for one thing: run YOLO Claude Code in a restricted environment. The container includes Python 3.12 and Node.js 20 for running code, but intentionally excludes version control tools.
+- **Git belongs on the host**: Git is **intentionally not included** in the container. All git operations (commit, push, pull, branch) should be performed on your host system before or after running `claude-yo`. This keeps the container focused and prevents accidental commits from inside the sandbox.
+- **Keep it fast**: The Docker container is built to reduce size and ensure fast load times. The default options get you right into Claude Code without delay.
+- **Helpful options for advanced use**: The script includes options like `--rebuild` to get the latest version of Claude Code, `--verbose` for full session logging, `--debug` for troubleshooting, and per-project customization via `.claude-yo.yml`.
 
 ## Features
 
@@ -22,6 +23,101 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - **Debug Mode**: Optional persistent shell access after Claude exits for exploration and troubleshooting
 - **Session Logging**: Automatic logging of all sessions with verbose mode for full capture
 - **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing)
+- **Per-Project Customization**: Install project-specific tools via `.claude-yo.yml` config file
+
+## Default Docker Image
+
+The default container is based on `python:3.12-slim-bookworm` and includes:
+
+- **Python 3.12** - Full Python environment with pip
+- **Node.js 20** - Required for Claude Code (installed via NodeSource)
+- **Claude Code** - The Anthropic CLI tool
+- **Basic Linux utilities** - Standard tools like `ls`, `grep`, `cat`, etc.
+
+**What's NOT included by design:**
+- Git (use on host before/after running `claude-yo`)
+- Build tools (gcc, make, etc.)
+- Database clients
+- Cloud CLIs
+
+This keeps the image small and fast. For projects needing additional tools, use [Per-Project Customization](#per-project-customization).
+
+## Per-Project Customization
+
+You can customize the Docker environment for each project by creating a `.claude-yo.yml` file in your project root. This is useful when your project requires additional tools, npm packages, or custom dependencies.
+
+### Example Configuration
+
+```yaml
+# .claude-yo.yml - all sections are optional
+
+# System packages installed via apt-get
+apt:
+  - git
+  - curl
+
+# Python packages (Python 3.12 is included in the default image)
+pip:
+  - pytest
+  - black
+  - mypy
+
+# Global npm packages
+npm:
+  - typescript
+  - eslint
+
+# Custom shell commands (escape hatch for advanced users)
+run:
+  - "curl -sSL https://install.python-poetry.org | python3 -"
+```
+
+### Using a Custom Base Image
+
+For Node.js-heavy projects, you can specify the Node.js base image to avoid the Python overhead:
+
+```yaml
+# .claude-yo.yml - Node.js project example
+base: node:20-bookworm-slim
+
+npm:
+  - typescript
+  - eslint
+```
+
+When you specify `base:`, claude-yo will:
+1. Start from your specified image instead of the default Python base
+2. Automatically install Node.js 20 and Claude Code (if not already present)
+3. Apply your apt/pip/npm/run customizations
+
+**Supported base images**: Any Debian-based image from [Docker Hub Official Images](https://hub.docker.com/search?image_filter=official&q=). Common choices:
+- `node:20-bookworm-slim` - Node.js projects (smaller, no Python)
+- `python:3.11-slim-bookworm` - Different Python version
+- `ruby:3.2-bookworm` - Ruby projects
+- `golang:1.22-bookworm` - Go projects
+
+Alpine-based images (e.g., `python:3.12-alpine`) are **not supported** due to missing glibc.
+
+### How It Works
+
+1. When you run `claude-yo`, it checks for `.claude-yo.yml` in the current directory
+2. If found, it generates a project-specific Docker image extending the base image (or your custom `base:`)
+3. The project image is cached based on a hash of your config file
+4. Subsequent runs use the cached image for fast startup
+5. When you modify `.claude-yo.yml`, the image is automatically rebuilt
+
+### Image Caching
+
+- Project images are tagged like `claude-yolo-project:myproject-a1b2c3d4`
+- The hash suffix ensures config changes trigger a rebuild
+- Old cached images for the same project are automatically cleaned up
+- Use `--rebuild` to force a fresh build of both base and project images
+
+### Tips
+
+- **Python included by default**: The default image includes Python 3.12, so you can use `pip` directly without adding Python to `apt`
+- **Keep configs in version control**: Commit your `.claude-yo.yml` so team members get the same environment
+- **Use `run` sparingly**: Prefer `apt`, `pip`, and `npm` sections when possible for better caching
 
 ## Prerequisites
 
@@ -44,11 +140,35 @@ chmod +x claude-yo
 ```
 
 3. (Optional) Add to your PATH or create a symlink:
-```bash
-# Option A: Symlink to a directory in your PATH
-ln -s "$(pwd)/claude-yo" ~/.local/bin/claude-yolo
 
-# Option B: Add this directory to your PATH
+**Check your PATH first**
+
+```bash
+echo $PATH
+```
+
+**Option A:** Symlink to a directory in your PATH
+
+```bash
+# Create ~/.local/bin if it doesn't exist, then symlink
+[ -d "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin"
+ln -s "$(pwd)/claude-yo" "$HOME/.local/bin/claude-yo"
+```
+
+**Note:** Ensure `~/.local/bin` is in your PATH (see Option B below)
+
+**Option B:** Add this directory to your PATH
+
+**macOS (zsh):**
+
+```bash
+echo 'export PATH="$PATH:'$(pwd)'"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Linux (bash):**
+
+```bash
 echo 'export PATH="$PATH:'$(pwd)'"' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -76,6 +196,31 @@ After authentication, you'll be dropped directly into Claude Code's interactive 
 **Default behavior**: When you exit Claude (type `/exit`), the container exits immediately and returns you to your host shell.
 
 **Debug mode** (`--debug`): When you exit Claude, you'll drop into a persistent bash shell inside the container for exploration. Type `exit` to save your authentication data and leave the container.
+
+### Typical Workflow (with Git)
+
+Since git is intentionally excluded from the container, use this workflow:
+
+```bash
+# 1. On host: Pull latest changes
+cd ~/my-project
+git pull
+
+# 2. Run Claude Code in container
+claude-yo
+
+# 3. (Inside container) Work with Claude...
+#    Claude can read/write files, run tests, etc.
+#    Type /exit when done
+
+# 4. Back on host: Review and commit changes
+git status
+git diff
+git add -A && git commit -m "feat: add new feature"
+git push
+```
+
+This keeps your git history clean and prevents accidental commits from inside the sandbox.
 
 ### Command-Line Options
 
@@ -173,7 +318,7 @@ This is the recommended way to update Claude Code, as it ensures you're always r
 ## How It Works
 
 1. The wrapper script (`claude-yo`) captures your user ID, group ID, and current directory
-2. It builds a Docker image (first run only) with Node.js and Claude Code installed
+2. It builds a Docker image (first run only) with Python 3.12, Node.js 20, and Claude Code installed
 3. It starts a container that:
    - Mounts your current directory to `/workspace`
    - Mounts a persistent Docker volume for authentication data
@@ -286,7 +431,7 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 ## Troubleshooting
 
-**Image won't build**: Check that Docker is running and you have internet access for npm packages.
+**Image won't build**: Check that Docker is running and you have internet access for npm packages. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
 
 **Authentication fails over SSH**: Claude Code authentication requires browser access. For first-time authentication:
 - Run `claude-yo` from a local terminal in a GUI environment, OR

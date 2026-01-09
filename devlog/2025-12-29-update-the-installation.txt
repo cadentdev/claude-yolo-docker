@@ -1,0 +1,141 @@
+
+ * ▐▛███▜▌ *   Claude Code v2.0.76
+* ▝▜█████▛▘ *  Opus 4.5 · Claude Max
+ *  ▘▘ ▝▝  *   ~/Repos/cadentdev/claude-yolo-docker
+
+  A gift for you
+  Your rate limits are 2x higher through 12/31. Enjoy the extra room to think!
+
+> At the very least, we need to update the Installation instructions to help
+ with Docker configuration. I was able to add `claude-yo` to my path on my 
+Mac, but I see these errors after starting Docker: `claude-yo --rebuild
+Session log: /Users/neil/.claude-yolo/logs/claude-yolo-2025-12-29-002853.log
+Removing existing image...
+Error response from daemon: No such image: claude-yolo:latest
+Building image from scratch (no cache)...
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2B done
+#1 DONE 0.0s
+ERROR: failed to build: failed to solve: failed to read dockerfile: open 
+Dockerfile: no such file or directory
+Build complete!
+Unable to find image 'claude-yolo:latest' locally
+docker: Error response from daemon: pull access denied for claude-yolo, 
+repository does not exist or may require 'docker login'
+
+Run 'docker run --help' for more information 
+  ⎿  ⧉ Selected 7 lines from README.md in Windsurf
+
+⏺ The issue is that when you run claude-yo from your PATH, Docker can't find the Dockerfile because it looks in your current directory, not where the script is located. Let me check the current script to see how to fix this.
+
+⏺ Read(claude-yo)
+  ⎿  Read 441 lines
+
+⏺ Read(README.md)
+  ⎿  Read 351 lines
+
+⏺ I see the problem. The script has SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)" at line 70, but when you use a symlink, $0 points to the symlink location (~/.local/bin/claude-yo), not the actual script in the repo. So Docker looks for the Dockerfile in ~/.local/bin/ instead of the repo directory.
+
+  Let me fix the script to properly resolve symlinks:
+
+⏺ Update(claude-yo)
+  ⎿  Added 9 lines, removed 1 line                                       
+      67  GROUPID=$(id -g)                                               
+      68  USERNAME=$(whoami)                                             
+      69  MOUNTDIR=$(pwd)                                                
+      70 -SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"                    
+      70 +# Resolve symlinks to find the actual script directory (where  
+         +Dockerfile lives)                                              
+      71 +SCRIPT_SOURCE="$0"                                             
+      72 +while [ -L "$SCRIPT_SOURCE" ]; do                              
+      73 +  SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"      
+      74 +  SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"                 
+      75 +  # Handle relative symlinks                                   
+      76 +  [[ "$SCRIPT_SOURCE" != /* ]] &&                              
+         +SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"                     
+      77 +done                                                           
+      78 +SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"        
+      79                                                                 
+      80  # Notify user of log location                                  
+      81  log_message "Session log: $LOGFILE"                            
+
+⏺ Now let me update the README to add a troubleshooting note about this:
+
+⏺ Update(README.md)
+  ⎿  Added 1 line, removed 1 line                                        
+      310                                                                
+      311  ## Troubleshooting                                            
+      312                                                                
+      313 -**Image won't build**: Check that Docker is running and you   
+          -have internet access for npm packages.                        
+      313 +**Image won't build**: Check that Docker is running and you   
+          +have internet access for npm packages. If you see "no such    
+          +file or directory" for the Dockerfile, ensure you're using    
+          +the latest version of `claude-yo` which properly resolves     
+          +symlinks.                                                     
+      314                                                                
+      315  **Authentication fails over SSH**: Claude Code authentication 
+            requires browser access. For first-time authentication:      
+      316  - Run `claude-yo` from a local terminal in a GUI environment, 
+            OR                                                           
+
+⏺ The fix is complete. The issue was that when you symlink claude-yo to your PATH, the script was looking for the Dockerfile in the symlink's directory (~/.local/bin/) instead of the actual repository.
+
+  What was fixed:
+  - claude-yo:70-78 now properly resolves symlinks to find the actual script location where the Dockerfile lives
+
+  You can now test it:
+
+  claude-yo --rebuild
+
+  This should correctly find and build from the Dockerfile in /Users/neil/Repos/cadentdev/claude-yolo-docker/.
+
+> Yes, that worked! Let's commit our changes, push, and then open a PR 
+  ⎿  ⧉ Selected 7 lines from README.md in Windsurf
+
+⏺ Bash(git status)
+  ⎿  On branch symlink                                           
+     Changes not staged for commit:
+       (use "git add <file>..." to update what will be committed)
+     … +5 lines (ctrl+o to expand)
+
+⏺ Bash(git diff)
+  ⎿  diff --git a/README.md b/README.md
+     index 5bad7c9..345276f 100644
+     --- a/README.md
+     … +111 lines (ctrl+o to expand)
+
+⏺ Bash(git log --oneline -5)
+  ⎿  d5a7a76 Update docs, add new tasks                            
+     136a8e5 feat: add debug mode, refine verbose and logging modes
+     4dd6353 Chat log for logging
+     … +2 lines (ctrl+o to expand)
+
+⏺ Bash(git add README.md claude-yo && git commit -m "fix: resolve symlinks when
+      finding Dockerfile location…)
+  ⎿ [symlink 2cd3f74] fix: resolve symlinks when finding Dockerfile locatio
+    n
+     2 files changed, 39 insertions(+), 7 deletions(-)
+
+
+⏺ Bash(git push -u origin symlink)
+  ⎿  branch 'symlink' set up to track 'origin/symlink'.                
+     remote:
+     remote: Create a pull request for 'symlink' on GitHub by visiting:
+     … +6 lines (ctrl+o to expand)
+
+⏺ Bash(git diff main...HEAD --stat)
+  ⎿   README.md | 36 ++++++++++++++++++++++++++++++------
+      claude-yo | 10 +++++++++-
+      2 files changed, 39 insertions(+), 7 deletions(-)
+
+⏺ Bash(gh pr create --title "fix: resolve symlinks when finding Dockerfile
+      location" --body "## Summary…)
+  ⎿  https://github.com/cadentdev/claude-yolo-docker/pull/4
+
+⏺ Done! PR created: https://github.com/cadentdev/claude-yolo-docker/pull/4
+
+
+

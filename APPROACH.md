@@ -3,35 +3,39 @@
 ## Current Implementation
 
 ### Sequence
-1. Base image: `node:20-bookworm-slim` (includes `node` user with UID 1000)
-2. Build time: `npm install -g @anthropic-ai/claude-code` (system-wide, requires root)
-3. Runtime: Create user account matching host UID/GID
-4. Runtime: Restore home directory from persistent volume
-5. Runtime: Execute `claude --dangerously-skip-permissions` as mapped user
+1. Base image: `python:3.12-slim-bookworm` (no UID collision issues)
+2. Build time: Install Node.js 20 via NodeSource
+3. Build time: `npm install -g @anthropic-ai/claude-code` (system-wide, requires root)
+4. Runtime: Create user account matching host UID/GID
+5. Runtime: Restore home directory from persistent volume
+6. Runtime: Execute `claude --dangerously-skip-permissions` as mapped user
 
-### Current Problems
+### Design Decisions
 
-**UID Collision (Dockerfile:1, claude-yo:66-75)**
-- The node base image includes a `node` user with UID 1000
-- Most host users also have UID 1000 (first non-root user on Linux)
-- When UIDs match, the script reuses the existing `node` user instead of creating a new one
-- This is technically functional but semantically confusing
+**Python as Default Base**
+- Most AI/ML projects need Python, making it the sensible default
+- Node.js is installed at build time for Claude Code
+- Projects needing only Node.js can use `base: node:20-bookworm-slim` in `.claude-yo.yml`
 
-**No Auto-Updates (TASKS.md:15-16)**
+**Git Intentionally Excluded**
+- All git operations should happen on the host system
+- Prevents accidental commits from inside the sandbox
+- Keeps the container focused on code execution, not version control
+
+**No Auto-Updates**
 - Claude Code is installed globally by root during image build
-- The runtime user lacks permissions to update the global installation
-- Users must manually rebuild the image with `--rebuild` to get updates
-- Claude Code's built-in auto-update mechanism is disabled
+- Users update via `--rebuild` flag for controlled, reproducible updates
+- This is a feature, not a limitation (see analysis below)
 
 ### Current Advantages
 
 **Fast Startup**
-- Node.js and Claude Code are pre-installed in Docker layers
+- Python, Node.js, and Claude Code are pre-installed in Docker layers
 - Layer caching means installation only happens once during initial build
 - Container startup is nearly instantaneous (< 1 second)
 
 **Deterministic Environment**
-- All users get identical Node.js version (20.x)
+- All users get identical Python (3.12) and Node.js (20.x) versions
 - Reproducible builds across different machines
 - Easy to debug issues (everyone has same environment)
 
@@ -170,30 +174,34 @@ For a containerized environment, **controlled updates might be preferable** to e
 
 ## Alternative Solution: Hybrid Approach
 
-### Option 1: Remove Node User (Simple Fix)
+### Option 1: Python Base with Node.js (IMPLEMENTED)
 
 **Dockerfile:**
 ```dockerfile
-FROM node:20-bookworm-slim
+FROM python:3.12-slim-bookworm
 
-# Remove the node user to prevent UID collision
-RUN userdel -r node
-
-# Install Claude Code globally
-RUN npm install -g @anthropic-ai/claude-code
+# Install Node.js 20, yq for YAML parsing, and Claude Code
+RUN apt-get update && \
+    apt-get install -y curl yq && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g @anthropic-ai/claude-code
 
 WORKDIR /workspace
 CMD ["/bin/bash"]
 ```
 
 **Benefits:**
-- ✅ Eliminates UID 1000 collision
+- ✅ No UID collision (Python image has no pre-existing users with UID 1000)
+- ✅ Python available by default (most AI/ML projects need it)
 - ✅ Keeps fast Docker layer caching
-- ✅ Minimal change to current architecture
-- ✅ Small image size maintained
+- ✅ Per-project customization via `.claude-yo.yml`
 
 **Tradeoffs:**
+- Slightly larger image than Node.js-only
 - Still no auto-updates (but manual `--rebuild` works)
+- Node.js-only projects can use `base: node:20-bookworm-slim` to avoid Python overhead
 
 ### Option 2: Dual Installation
 
@@ -245,31 +253,35 @@ su - \$CONTAINER_USER -c '
 - Fast startup is excellent UX
 
 **Mitigations for current problems:**
-- Add `userdel -r node` to Dockerfile (fix UID collision)
-- Document that `--rebuild` is the update mechanism
-- Consider this a feature, not a bug (controlled updates)
+- ✅ Switch to Python base image (no UID collision)
+- ✅ Document that `--rebuild` is the update mechanism
+- ✅ Per-project customization via `.claude-yo.yml`
 
 ## Recommendations
 
-### Immediate Action: Remove Node User
+### Implemented: Python Base with Per-Project Customization
 
-**Change Dockerfile:**
+**Current Dockerfile:**
 ```dockerfile
-FROM node:20-bookworm-slim
+FROM python:3.12-slim-bookworm
 
-# Prevent UID collision with host users
-RUN userdel -r node
+# Install Node.js 20, yq for YAML parsing, and Claude Code
+RUN apt-get update && \
+    apt-get install -y curl yq && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g @anthropic-ai/claude-code
 
-RUN npm install -g @anthropic-ai/claude-code
 WORKDIR /workspace
 CMD ["/bin/bash"]
 ```
 
-**Impact:**
-- Fixes UID collision issue
-- Zero performance impact
-- No architectural changes
-- Takes 30 seconds to implement
+**Achieved:**
+- ✅ No UID collision (Python image clean)
+- ✅ Python available by default
+- ✅ Per-project customization via `.claude-yo.yml`
+- ✅ Custom base images supported (e.g., `node:20-bookworm-slim`)
 
 ### Future Consideration: Dual Installation
 
@@ -288,15 +300,16 @@ CMD ["/bin/bash"]
 - ❌ Loss of Docker layer caching defeats container benefits
 - ❌ Reproducibility suffers
 
-**Core principle:** Don't conflate build-time and runtime concerns. System dependencies (Node.js) belong in the image. User-specific tools (Claude Code) can be dual-installed if needed.
+**Core principle:** Don't conflate build-time and runtime concerns. System dependencies (Python, Node.js) belong in the image. User-specific tools (Claude Code) can be dual-installed if needed.
 
 ## Conclusion
 
-The proposed Debian base approach, while technically feasible, introduces more problems than it solves. The runtime installation overhead, persistence complexity, and loss of Docker's caching benefits make it impractical.
+The Python base approach provides the best balance of functionality and simplicity:
 
-**Recommended path forward:**
-1. **Short term:** Remove node user from Dockerfile (eliminates UID collision)
-2. **Medium term:** Evaluate if auto-updates are actually needed in practice
-3. **Long term:** If auto-updates prove valuable, implement dual installation approach
+1. ✅ **Python + Node.js by default** - Covers most AI/ML and web development needs
+2. ✅ **Per-project customization** - `.claude-yo.yml` for additional tools
+3. ✅ **Custom base images** - Node.js-only or other languages as needed
+4. ✅ **Controlled updates** - `--rebuild` for reproducible environments
+5. ✅ **Git on host** - Clean separation of code execution and version control
 
 The current architecture with manual `--rebuild` updates is a reasonable design choice for a containerized development environment, where reproducibility and fast startup are often more valuable than automatic updates.

@@ -1,5 +1,7 @@
 # Plan: Add Debug Mode (`-d` or `--debug`)
 
+> **Status: IMPLEMENTED** - This plan has been fully implemented. See `claude-yo` for the current implementation.
+
 ## Task Overview
 Implement a debug mode that gives users more control over the container lifecycle and allows shell access after Claude Code exits. Debug mode is orthogonal to logging - users can combine flags for different workflows.
 
