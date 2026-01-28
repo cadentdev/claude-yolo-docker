@@ -21,3 +21,24 @@
 - [x] Document default Docker image (Python 3.12 + Node.js 20)
 - [x] Document per-project customization options
 - [x] Add link to Docker Hub official images for custom base selection
+
+## GitHub Repository Protection (for public release)
+
+### Branch protection (Settings → Branches → main)
+
+- [ ] Require pull request reviews (1+ approver)
+- [ ] Require status checks to pass (when CI is added)
+- [ ] Require signed commits (optional)
+- [ ] Do not allow force pushes
+- [ ] Do not allow deletions
+
+### Repository security (Settings → Security)
+
+- [ ] Enable Dependabot alerts
+- [ ] Enable secret scanning
+- [x] Add SECURITY.md
+
+### Pre-release checks
+
+- [ ] Verify no secrets in git history
+- [x] Add LICENSE file
