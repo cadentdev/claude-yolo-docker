@@ -108,7 +108,8 @@ validate_config() {
   fi
 
   # Validate package names don't contain dangerous characters
-  local content=$(cat "$config_file")
+  local content
+  content=$(cat "$config_file")
   if echo "$content" | grep -qE '[;&|`$]'; then
     log_message "Error: Invalid characters in .claude-yo.yml (shell metacharacters not allowed)"
     return 1
@@ -123,20 +124,23 @@ generate_project_dockerfile() {
   local output_file="$2"
 
   # Check if custom base image is specified (strip quotes and whitespace)
-  local base_image=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
+  local base_image
+  base_image=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
 
   if [ -n "$base_image" ]; then
     # Custom base image - need to install Node.js and Claude Code
-    echo "FROM $base_image" > "$output_file"
-    echo "" >> "$output_file"
-    echo "# Install Node.js and Claude Code (required for claude-yo)" >> "$output_file"
-    echo "RUN apt-get update && \\" >> "$output_file"
-    echo "    apt-get install -y curl yq && \\" >> "$output_file"
-    echo "    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \\" >> "$output_file"
-    echo "    apt-get install -y nodejs && \\" >> "$output_file"
-    echo "    rm -rf /var/lib/apt/lists/* && \\" >> "$output_file"
-    echo "    npm install -g @anthropic-ai/claude-code" >> "$output_file"
-    echo "" >> "$output_file"
+    {
+      echo "FROM $base_image"
+      echo ""
+      echo "# Install Node.js and Claude Code (required for claude-yo)"
+      echo "RUN apt-get update && \\"
+      echo "    apt-get install -y curl yq && \\"
+      echo "    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \\"
+      echo "    apt-get install -y nodejs && \\"
+      echo "    rm -rf /var/lib/apt/lists/* && \\"
+      echo "    npm install -g @anthropic-ai/claude-code"
+      echo ""
+    } > "$output_file"
   else
     # No custom base - extend the pre-built claude-yolo image
     echo "FROM claude-yolo:latest" > "$output_file"
@@ -144,19 +148,22 @@ generate_project_dockerfile() {
   fi
 
   # apt packages
-  local apt_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.apt[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  local apt_packages
+  apt_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.apt[]' /config.yml 2>/dev/null | tr '\n' ' ')
   if [ -n "$apt_packages" ]; then
     echo "RUN apt-get update && apt-get install -y $apt_packages && rm -rf /var/lib/apt/lists/*" >> "$output_file"
   fi
 
   # pip packages
-  local pip_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.pip[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  local pip_packages
+  pip_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.pip[]' /config.yml 2>/dev/null | tr '\n' ' ')
   if [ -n "$pip_packages" ]; then
     echo "RUN pip3 install --break-system-packages $pip_packages" >> "$output_file"
   fi
 
   # npm packages
-  local npm_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.npm[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  local npm_packages
+  npm_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.npm[]' /config.yml 2>/dev/null | tr '\n' ' ')
   if [ -n "$npm_packages" ]; then
     echo "RUN npm install -g $npm_packages" >> "$output_file"
   fi
@@ -175,7 +182,8 @@ generate_project_dockerfile() {
 # Get project image name from directory
 get_project_image_name() {
   local mount_dir="$1"
-  local project_name=$(basename "$mount_dir" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
+  local project_name
+  project_name=$(basename "$mount_dir" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
   echo "claude-yolo-project:$project_name"
 }
 
@@ -303,14 +311,16 @@ fi
 
 # Log container setup information to file only (container will display on console)
 # This avoids duplicate output since the container script always shows this info
-echo "═══════════════════════════════════════════════════════════════" >> "$LOGFILE"
-echo "Container Setup" >> "$LOGFILE"
-echo "═══════════════════════════════════════════════════════════════" >> "$LOGFILE"
-echo "Container user:      $USERNAME" >> "$LOGFILE"
-echo "UID:GID:             $USERID:$GROUPID" >> "$LOGFILE"
-echo "Working directory:   $MOUNTDIR" >> "$LOGFILE"
-echo "                     → mounted at /workspace" >> "$LOGFILE"
-echo "═══════════════════════════════════════════════════════════════" >> "$LOGFILE"
+{
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "Container Setup"
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "Container user:      $USERNAME"
+  echo "UID:GID:             $USERID:$GROUPID"
+  echo "Working directory:   $MOUNTDIR"
+  echo "                     → mounted at /workspace"
+  echo "═══════════════════════════════════════════════════════════════"
+} >> "$LOGFILE"
 
 # Run the container (behavior depends on debug and verbose flags)
 if [ "$DEBUG" = true ]; then
@@ -324,7 +334,7 @@ if [ "$DEBUG" = true ]; then
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        $DOCKER_IMAGE \
+        \"$DOCKER_IMAGE\" \
         /bin/bash -c \"
           # Find if a user with our UID already exists
           EXISTING_USER=\\\$(getent passwd $USERID | cut -d: -f1)
@@ -386,7 +396,7 @@ if [ "$DEBUG" = true ]; then
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        $DOCKER_IMAGE \
+        "$DOCKER_IMAGE" \
         /bin/bash -c "
           # Find if a user with our UID already exists
           EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
@@ -450,7 +460,7 @@ if [ "$DEBUG" = true ]; then
       -v claude-yolo-home:/home-persist \
       -it \
       --rm \
-      $DOCKER_IMAGE \
+      "$DOCKER_IMAGE" \
       /bin/bash -c "
         # Find if a user with our UID already exists
         EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
@@ -516,7 +526,7 @@ else
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        $DOCKER_IMAGE \
+        \"$DOCKER_IMAGE\" \
         /bin/bash -c \"
           # Find if a user with our UID already exists
           EXISTING_USER=\\\$(getent passwd $USERID | cut -d: -f1)
@@ -562,7 +572,7 @@ else
         -v claude-yolo-home:/home-persist \
         -it \
         --rm \
-        $DOCKER_IMAGE \
+        "$DOCKER_IMAGE" \
         /bin/bash -c "
           # Find if a user with our UID already exists
           EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
@@ -608,7 +618,7 @@ else
       -v claude-yolo-home:/home-persist \
       -it \
       --rm \
-      $DOCKER_IMAGE \
+      "$DOCKER_IMAGE" \
       /bin/bash -c "
         # Find if a user with our UID already exists
         EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
