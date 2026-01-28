@@ -22,7 +22,7 @@
 ### Branch protection (Settings → Branches → main)
 
 - [x] Require pull request reviews (1+ approver)
-- [ ] Require status checks to pass (when CI is added)
+- [x] Require status checks to pass (lint, build)
 - [x] Do not allow force pushes
 - [x] Do not allow deletions
 
