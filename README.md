@@ -1,5 +1,7 @@
 # Claude YOLO Docker
 
+[![CI](https://github.com/cadentdev/claude-yolo-docker/actions/workflows/ci.yml/badge.svg)](https://github.com/cadentdev/claude-yolo-docker/actions/workflows/ci.yml)
+
 A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` in isolated environments.
 
 ## What This Does
