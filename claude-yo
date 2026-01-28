@@ -1,21 +1,29 @@
 #!/bin/bash
 
 # Parse arguments
+# Wrapper flags are parsed here; all other arguments pass through to Claude Code.
+# Wrapper flags (-r, -v, -d, -h) are intentionally chosen to avoid collision with
+# Claude Code's flags (which use long-form like --model, --allowedTools, etc.)
 REBUILD=false
 VERBOSE=false
 DEBUG=false
+CLAUDE_ARGS=()
+
 for arg in "$@"; do
   case $arg in
     -h|--help)
-      echo "Usage: claude-yo [OPTIONS]"
+      echo "Usage: claude-yo [OPTIONS] [-- CLAUDE_ARGS...]"
       echo ""
       echo "Run Claude Code in an isolated Docker container with YOLO mode enabled."
       echo ""
-      echo "Options:"
+      echo "Wrapper Options:"
       echo "  -r, --rebuild    Force rebuild of Docker image from scratch (clears cache)"
       echo "  -v, --verbose    Enable verbose mode with full session logging"
       echo "  -d, --debug      Enable debug mode with persistent container shell"
       echo "  -h, --help       Display this help message"
+      echo ""
+      echo "Any unrecognized arguments are passed directly to Claude Code."
+      echo "Wrapper flags are chosen to avoid collision with Claude Code's flags."
       echo ""
       echo "The container will mount your current directory as the workspace."
       echo "Authentication data persists across runs in a Docker volume."
@@ -36,11 +44,14 @@ for arg in "$@"; do
       echo "  Use 'base:' for Node.js-only projects to skip Python overhead."
       echo ""
       echo "Examples:"
-      echo "  claude-yo                      # Fast workflow (default)"
-      echo "  claude-yo --verbose            # Full session logging"
-      echo "  claude-yo --debug              # Persistent shell for exploration"
-      echo "  claude-yo --debug --verbose    # Persistent shell + full logging"
-      echo "  claude-yo --rebuild            # Update to latest Claude Code"
+      echo "  claude-yo                                    # Fast workflow (default)"
+      echo "  claude-yo --verbose                          # Full session logging"
+      echo "  claude-yo --debug                            # Persistent shell for exploration"
+      echo "  claude-yo --debug --verbose                  # Persistent shell + full logging"
+      echo "  claude-yo --rebuild                          # Update to latest Claude Code"
+      echo "  claude-yo -p \"Review the README\"             # Pass a prompt to Claude"
+      echo "  claude-yo --model sonnet                     # Use a specific model"
+      echo "  claude-yo -d -p \"Fix the tests\" --model opus # Combine wrapper and Claude flags"
       echo ""
       echo "All sessions are logged to: ~/.claude-yolo/logs/claude-yolo-TIMESTAMP.log"
       echo "For detailed mode documentation, see the README.md file."
@@ -48,23 +59,28 @@ for arg in "$@"; do
       ;;
     -r|--rebuild)
       REBUILD=true
-      shift
       ;;
     -v|--verbose)
       VERBOSE=true
-      shift
       ;;
     -d|--debug)
       DEBUG=true
-      shift
       ;;
     *)
-      echo "Unknown option: $arg"
-      echo "Use --help for usage information"
-      exit 1
+      # Pass unrecognized arguments to Claude Code
+      CLAUDE_ARGS+=("$arg")
       ;;
   esac
 done
+
+# Build the Claude command with any passthrough arguments
+CLAUDE_CMD="claude --dangerously-skip-permissions"
+if [ ${#CLAUDE_ARGS[@]} -gt 0 ]; then
+  # Join args with proper quoting for the command
+  for arg in "${CLAUDE_ARGS[@]}"; do
+    CLAUDE_CMD="$CLAUDE_CMD $(printf '%q' "$arg")"
+  done
+fi
 
 # Setup logging
 LOG_DIR="$HOME/.claude-yolo/logs"
@@ -340,7 +356,7 @@ if [ "$DEBUG" = true ]; then
           read
 
           # Run Claude
-          su - \\\$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+          su - \\\$CONTAINER_USER -c \\\"cd /workspace && $CLAUDE_CMD\\\"
 
           # Drop to persistent debug shell
           echo \\\"\\\"
@@ -402,7 +418,7 @@ if [ "$DEBUG" = true ]; then
           read
 
           # Run Claude
-          su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+          su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
 
           # Drop to persistent debug shell
           echo \"\"
@@ -466,7 +482,7 @@ if [ "$DEBUG" = true ]; then
         read
 
         # Run Claude
-        su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+        su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
 
         # Drop to persistent debug shell
         echo \"\"
@@ -532,7 +548,7 @@ else
           read
 
           # Run Claude and EXIT (no debug shell)
-          su - \\\$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+          su - \\\$CONTAINER_USER -c \\\"cd /workspace && $CLAUDE_CMD\\\"
 
           # Save home directory
           mkdir -p /home-persist/\\\$CONTAINER_USER
@@ -578,7 +594,7 @@ else
           read
 
           # Run Claude and EXIT (no debug shell)
-          su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+          su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
 
           # Save home directory
           mkdir -p /home-persist/\$CONTAINER_USER
@@ -624,7 +640,7 @@ else
         echo \"\"
 
         # Run Claude and EXIT (no debug shell)
-        su - \$CONTAINER_USER -c 'cd /workspace && claude --dangerously-skip-permissions'
+        su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
 
         # Save home directory
         mkdir -p /home-persist/\$CONTAINER_USER

@@ -231,6 +231,22 @@ claude-yo --help
 claude-yo -h
 ```
 
+**Pass arguments to Claude Code:**
+
+Any arguments not recognized by the wrapper are passed directly to Claude Code:
+```bash
+# Pass a prompt
+claude-yo -p "Review the README and suggest improvements"
+
+# Use a specific model
+claude-yo --model sonnet
+
+# Combine wrapper flags with Claude Code flags
+claude-yo -d -p "Fix the failing tests" --model opus
+```
+
+Wrapper flags (`-r`, `-v`, `-d`, `-h`) are intentionally chosen to avoid collision with Claude Code's flags.
+
 **Force rebuild (update Claude Code or start fresh):**
 ```bash
 claude-yo --rebuild

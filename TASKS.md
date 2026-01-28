@@ -4,6 +4,7 @@
 
 - [ ] Fix bash terminal control warnings (cannot set terminal process group, no job control)
 - [ ] Add an output message to confirm an existing container is detected
+- [x] Pass command line parameters to Claude Code (e.g., `claude-yo -p "Review the docs"`)
 
 ## container
 

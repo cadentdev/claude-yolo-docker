@@ -32,6 +32,17 @@ Git is **intentionally not included** in the container. All version control oper
 - Keeps the container focused on code execution
 - Ensures clean separation between development and version control
 
+### Command-Line Argument Passthrough
+The wrapper parses its own flags (`-r`, `-v`, `-d`, `-h`) and passes all other arguments directly to Claude Code. This allows users to pass prompts, model selection, and other Claude Code options:
+
+```bash
+claude-yo -p "Review the README"
+claude-yo --model sonnet
+claude-yo -d -p "Fix the tests" --model opus
+```
+
+**Flag naming convention**: Wrapper flags are intentionally chosen to avoid collision with Claude Code's flags. Claude Code uses long-form flags like `--model`, `--allowedTools`, `--print`, etc. The wrapper uses short flags (`-r`, `-v`, `-d`) and avoids any flags that Claude Code might use.
+
 ### Per-Project Customization
 Projects can include a `.claude-yo.yml` file to specify additional tools and packages. The wrapper script:
 1. Detects `.claude-yo.yml` in the mounted project directory
