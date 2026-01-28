@@ -22,10 +22,10 @@
 - Prevents accidental commits from inside the sandbox
 - Keeps the container focused on code execution, not version control
 
-**No Auto-Updates**
+**Controlled Updates via `--rebuild`**
 - Claude Code is installed globally by root during image build
 - Users update via `--rebuild` flag for controlled, reproducible updates
-- This is a feature, not a limitation (see analysis below)
+- This is a deliberate design choice: reproducibility and fast startup are more valuable than automatic updates in a containerized environment
 
 ### Current Advantages
 
@@ -203,48 +203,7 @@ CMD ["/bin/bash"]
 - Still no auto-updates (but manual `--rebuild` works)
 - Node.js-only projects can use `base: node:20-bookworm-slim` to avoid Python overhead
 
-### Option 2: Dual Installation
-
-**Approach:**
-- Keep system-wide Claude Code (fallback, fast startup)
-- On first run, install user-local Claude Code (enables auto-updates)
-- User-local version takes precedence via PATH
-
-**Wrapper script modification:**
-```bash
-su - \$CONTAINER_USER -c '
-  cd /workspace
-
-  # Check if user has local claude-code installation
-  if [ ! -d ~/.local/lib/node_modules/@anthropic-ai/claude-code ]; then
-    echo "Installing user-local Claude Code for auto-updates..."
-    npm install --prefix ~/.local @anthropic-ai/claude-code
-    echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> ~/.bashrc
-  fi
-
-  # Prefer user-local installation
-  export PATH="$HOME/.local/bin:$PATH"
-
-  claude --dangerously-skip-permissions
-'
-```
-
-**Benefits:**
-- ✅ Fast first startup (system claude-code available)
-- ✅ Auto-updates work (user owns ~/.local installation)
-- ✅ Graceful fallback if user installation fails
-- ⚠️ Volume size increases (~100MB for user installation)
-- ⚠️ Slower first run (one-time setup)
-
-**Volume contents:**
-```
-/home-persist/user/
-  ├── .claude/          (auth, < 1KB)
-  └── .local/
-      └── lib/node_modules/@anthropic-ai/claude-code/  (~100MB)
-```
-
-### Option 3: Accept Current State
+### Option 2: Accept Current State (IMPLEMENTED)
 
 **Argument for status quo:**
 - `--rebuild` flag provides controlled updates
@@ -282,14 +241,6 @@ CMD ["/bin/bash"]
 - ✅ Python available by default
 - ✅ Per-project customization via `.claude-yo.yml`
 - ✅ Custom base images supported (e.g., `node:20-bookworm-slim`)
-
-### Future Consideration: Dual Installation
-
-**If auto-updates become important:**
-- Implement Option 2 (dual installation approach)
-- Accept ~100MB volume size increase
-- Accept one-time setup delay on first run
-- Get auto-updates without sacrificing fast rebuilds
 
 ### Not Recommended: Full Debian Base Approach
 
