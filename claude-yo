@@ -7,6 +7,7 @@
 REBUILD=false
 VERBOSE=false
 DEBUG=false
+HEADLESS=false
 CLAUDE_ARGS=()
 
 for arg in "$@"; do
@@ -20,6 +21,7 @@ for arg in "$@"; do
       echo "  -r, --rebuild    Force rebuild of Docker image from scratch (clears cache)"
       echo "  -v, --verbose    Enable verbose mode with full session logging"
       echo "  -d, --debug      Enable debug mode with persistent container shell"
+      echo "  --headless       Run without TTY (for cron/automation)"
       echo "  -h, --help       Display this help message"
       echo ""
       echo "Any unrecognized arguments are passed directly to Claude Code."
@@ -48,6 +50,7 @@ for arg in "$@"; do
       echo "  claude-yo --verbose                          # Full session logging"
       echo "  claude-yo --debug                            # Persistent shell for exploration"
       echo "  claude-yo --debug --verbose                  # Persistent shell + full logging"
+      echo "  claude-yo --headless -p \"Run tests\"          # Non-interactive (cron/CI)"
       echo "  claude-yo --rebuild                          # Update to latest Claude Code"
       echo "  claude-yo -p \"Review the README\"             # Pass a prompt to Claude"
       echo "  claude-yo --model sonnet                     # Use a specific model"
@@ -66,12 +69,21 @@ for arg in "$@"; do
     -d|--debug)
       DEBUG=true
       ;;
+    --headless)
+      HEADLESS=true
+      ;;
     *)
       # Pass unrecognized arguments to Claude Code
       CLAUDE_ARGS+=("$arg")
       ;;
   esac
 done
+
+# Validate flag combinations
+if [ "$HEADLESS" = true ] && [ "$DEBUG" = true ]; then
+  echo "Error: --headless and --debug are mutually exclusive"
+  exit 1
+fi
 
 # Build the Claude command with any passthrough arguments
 CLAUDE_CMD="claude --dangerously-skip-permissions"
@@ -88,10 +100,40 @@ mkdir -p "$LOG_DIR"
 TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 LOGFILE="$LOG_DIR/claude-yolo-$TIMESTAMP.log"
 
+# Record start time for execution tracking
+START_TIME=$(date +%s)
+
 # Log function for wrapper messages
 log_message() {
   echo "$@" | tee -a "$LOGFILE"
 }
+
+# Format elapsed time as human-readable string
+format_elapsed_time() {
+  local elapsed=$1
+  local hours=$((elapsed / 3600))
+  local minutes=$(((elapsed % 3600) / 60))
+  local seconds=$((elapsed % 60))
+
+  if [ $hours -gt 0 ]; then
+    echo "${hours}h ${minutes}m ${seconds}s"
+  elif [ $minutes -gt 0 ]; then
+    echo "${minutes}m ${seconds}s"
+  else
+    echo "${seconds}s"
+  fi
+}
+
+# Log execution time on exit
+log_execution_time() {
+  local end_time=$(date +%s)
+  local elapsed=$((end_time - START_TIME))
+  local formatted=$(format_elapsed_time $elapsed)
+  log_message "Completed in $formatted"
+}
+
+# Set trap to log execution time on exit
+trap log_execution_time EXIT
 
 # =============================================================================
 # Per-Project Configuration Functions
@@ -322,11 +364,95 @@ fi
   echo "═══════════════════════════════════════════════════════════════"
 } >> "$LOGFILE"
 
-# Run the container (behavior depends on debug and verbose flags)
-if [ "$DEBUG" = true ]; then
+# =============================================================================
+# Common Container Script Components (to reduce duplication)
+# =============================================================================
+
+# User setup: find existing user with matching UID or create new user
+# This script fragment is used inside the container to set up the user
+CONTAINER_USER_SETUP='
+  EXISTING_USER=$(getent passwd '"$USERID"' | cut -d: -f1)
+  if [ -n "$EXISTING_USER" ]; then
+    CONTAINER_USER=$EXISTING_USER
+  else
+    CONTAINER_USER='"$USERNAME"'
+    groupadd -g '"$GROUPID"' $CONTAINER_USER 2>/dev/null || true
+    useradd -u '"$USERID"' -g '"$GROUPID"' -m -s /bin/bash $CONTAINER_USER
+  fi
+
+  # Restore home directory from persistent volume if it exists
+  if [ -d /home-persist/$CONTAINER_USER ]; then
+    cp -a /home-persist/$CONTAINER_USER/. /home/$CONTAINER_USER/
+  fi
+'
+
+# Container setup banner (shown after user is set up)
+CONTAINER_BANNER='
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "Container Setup Complete"
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "Container user:      $CONTAINER_USER"
+  echo "UID:GID:             '"$USERID"':'"$GROUPID"'"
+  echo "Working directory:   '"$MOUNTDIR"'"
+  echo "                     → mounted at /workspace"
+  echo "═══════════════════════════════════════════════════════════════"
+'
+
+# Home directory save (run at the end of session)
+CONTAINER_SAVE_HOME='
+  mkdir -p /home-persist/$CONTAINER_USER
+  cp -a /home/$CONTAINER_USER/. /home-persist/$CONTAINER_USER/
+'
+
+# Debug shell sequence (shown after Claude exits in debug mode)
+CONTAINER_DEBUG_SHELL='
+  echo ""
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "Claude exited. Starting debug shell..."
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "You are now in the container as $CONTAINER_USER"
+  echo "Working directory: /workspace"
+  echo ""
+  echo "Type '\''exit'\'' to save your home directory and leave the container."
+  echo "═══════════════════════════════════════════════════════════════"
+  echo ""
+  su -l $CONTAINER_USER
+  echo "Saving authentication data..."
+'
+
+# =============================================================================
+
+# Run the container (behavior depends on headless, debug, and verbose flags)
+if [ "$HEADLESS" = true ]; then
+  # Mode 5: Headless (no TTY, for cron/automation)
+  log_message "Headless mode - running non-interactively"
+
+  docker run \
+    -v "$MOUNTDIR":/workspace \
+    -v claude-yolo-home:/home-persist \
+    --rm \
+    "$DOCKER_IMAGE" \
+    /bin/bash -c "$CONTAINER_USER_SETUP
+      su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
+      EXIT_CODE=\$?
+      $CONTAINER_SAVE_HOME
+      exit \$EXIT_CODE
+    "
+elif [ "$DEBUG" = true ]; then
   if [ "$VERBOSE" = true ]; then
     # Mode 4: Debug + Verbose (persistent shell, full logging)
     log_message "Debug + Verbose mode enabled - full session logged, container persists"
+
+    # Build the container script for debug+verbose mode
+    DEBUG_VERBOSE_SCRIPT="$CONTAINER_USER_SETUP $CONTAINER_BANNER
+        echo \"\"
+        echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
+        read
+        su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
+        $CONTAINER_DEBUG_SHELL
+        $CONTAINER_SAVE_HOME
+        echo \"Done. Exiting container.\"
+      "
 
     if command -v script &> /dev/null; then
       script -q -f -c "docker run \
@@ -335,59 +461,7 @@ if [ "$DEBUG" = true ]; then
         -it \
         --rm \
         \"$DOCKER_IMAGE\" \
-        /bin/bash -c \"
-          # Find if a user with our UID already exists
-          EXISTING_USER=\\\$(getent passwd $USERID | cut -d: -f1)
-
-          if [ -n \\\"\\\$EXISTING_USER\\\" ]; then
-            CONTAINER_USER=\\\$EXISTING_USER
-          else
-            CONTAINER_USER=$USERNAME
-            groupadd -g $GROUPID \\\$CONTAINER_USER 2>/dev/null || true
-            useradd -u $USERID -g $GROUPID -m -s /bin/bash \\\$CONTAINER_USER
-          fi
-
-          # Restore home directory from persistent volume if it exists
-          if [ -d /home-persist/\\\$CONTAINER_USER ]; then
-            cp -a /home-persist/\\\$CONTAINER_USER/. /home/\\\$CONTAINER_USER/
-          fi
-
-          # Display setup information with prompt
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"Container Setup Complete\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"Container user:      \\\$CONTAINER_USER\\\"
-          echo \\\"UID:GID:             $USERID:$GROUPID\\\"
-          echo \\\"Working directory:   $MOUNTDIR\\\"
-          echo \\\"                     → mounted at /workspace\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"\\\"
-          echo \\\"Press Enter to start Claude Code with --dangerously-skip-permissions\\\"
-          read
-
-          # Run Claude
-          su - \\\$CONTAINER_USER -c \\\"cd /workspace && $CLAUDE_CMD\\\"
-
-          # Drop to persistent debug shell
-          echo \\\"\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"Claude exited. Starting debug shell...\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"You are now in the container as \\\$CONTAINER_USER\\\"
-          echo \\\"Working directory: /workspace\\\"
-          echo \\\"\\\"
-          echo \\\"Type 'exit' to save your home directory and leave the container.\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"\\\"
-
-          su -l \\\$CONTAINER_USER
-
-          # Save home directory AFTER user exits
-          echo \\\"Saving authentication data...\\\"
-          mkdir -p /home-persist/\\\$CONTAINER_USER
-          cp -a /home/\\\$CONTAINER_USER/. /home-persist/\\\$CONTAINER_USER/
-          echo \\\"Done. Exiting container.\\\"
-        \"" "$LOGFILE"
+        /bin/bash -c '$DEBUG_VERBOSE_SCRIPT'" "$LOGFILE"
     else
       # Fallback without script command
       log_message "Warning: 'script' command not found. Docker session output will not be logged."
@@ -397,59 +471,7 @@ if [ "$DEBUG" = true ]; then
         -it \
         --rm \
         "$DOCKER_IMAGE" \
-        /bin/bash -c "
-          # Find if a user with our UID already exists
-          EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
-
-          if [ -n \"\$EXISTING_USER\" ]; then
-            CONTAINER_USER=\$EXISTING_USER
-          else
-            CONTAINER_USER=$USERNAME
-            groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
-            useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
-          fi
-
-          # Restore home directory from persistent volume if it exists
-          if [ -d /home-persist/\$CONTAINER_USER ]; then
-            cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
-          fi
-
-          # Display setup information with prompt
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"Container Setup Complete\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"Container user:      \$CONTAINER_USER\"
-          echo \"UID:GID:             $USERID:$GROUPID\"
-          echo \"Working directory:   $MOUNTDIR\"
-          echo \"                     → mounted at /workspace\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"\"
-          echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
-          read
-
-          # Run Claude
-          su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
-
-          # Drop to persistent debug shell
-          echo \"\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"Claude exited. Starting debug shell...\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"You are now in the container as \$CONTAINER_USER\"
-          echo \"Working directory: /workspace\"
-          echo \"\"
-          echo \"Type 'exit' to save your home directory and leave the container.\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"\"
-
-          su -l \$CONTAINER_USER
-
-          # Save home directory AFTER user exits
-          echo \"Saving authentication data...\"
-          mkdir -p /home-persist/\$CONTAINER_USER
-          cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
-          echo \"Done. Exiting container.\"
-        "
+        /bin/bash -c "$DEBUG_VERBOSE_SCRIPT"
     fi
   else
     # Mode 3: Debug only (persistent shell, no full logging)
@@ -461,57 +483,13 @@ if [ "$DEBUG" = true ]; then
       -it \
       --rm \
       "$DOCKER_IMAGE" \
-      /bin/bash -c "
-        # Find if a user with our UID already exists
-        EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
-
-        if [ -n \"\$EXISTING_USER\" ]; then
-          CONTAINER_USER=\$EXISTING_USER
-        else
-          CONTAINER_USER=$USERNAME
-          groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
-          useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
-        fi
-
-        # Restore home directory from persistent volume if it exists
-        if [ -d /home-persist/\$CONTAINER_USER ]; then
-          cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
-        fi
-
-        # Display setup information with prompt
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"Container Setup Complete\"
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"Container user:      \$CONTAINER_USER\"
-        echo \"UID:GID:             $USERID:$GROUPID\"
-        echo \"Working directory:   $MOUNTDIR\"
-        echo \"                     → mounted at /workspace\"
-        echo \"═══════════════════════════════════════════════════════════════\"
+      /bin/bash -c "$CONTAINER_USER_SETUP $CONTAINER_BANNER
         echo \"\"
         echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
         read
-
-        # Run Claude
         su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
-
-        # Drop to persistent debug shell
-        echo \"\"
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"Claude exited. Starting debug shell...\"
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"You are now in the container as \$CONTAINER_USER\"
-        echo \"Working directory: /workspace\"
-        echo \"\"
-        echo \"Type 'exit' to save your home directory and leave the container.\"
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"\"
-
-        su -l \$CONTAINER_USER
-
-        # Save home directory AFTER user exits
-        echo \"Saving authentication data...\"
-        mkdir -p /home-persist/\$CONTAINER_USER
-        cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+        $CONTAINER_DEBUG_SHELL
+        $CONTAINER_SAVE_HOME
         echo \"Done. Exiting container.\"
       "
   fi
@@ -520,6 +498,15 @@ else
     # Mode 2: Verbose only (no persistent shell, full logging)
     log_message "Verbose mode enabled - full session will be logged"
 
+    # Build the container script for verbose mode (with Enter prompt, no debug shell)
+    VERBOSE_SCRIPT="$CONTAINER_USER_SETUP $CONTAINER_BANNER
+        echo \"\"
+        echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
+        read
+        su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
+        $CONTAINER_SAVE_HOME
+      "
+
     if command -v script &> /dev/null; then
       script -q -f -c "docker run \
         -v \"$MOUNTDIR\":/workspace \
@@ -527,43 +514,7 @@ else
         -it \
         --rm \
         \"$DOCKER_IMAGE\" \
-        /bin/bash -c \"
-          # Find if a user with our UID already exists
-          EXISTING_USER=\\\$(getent passwd $USERID | cut -d: -f1)
-
-          if [ -n \\\"\\\$EXISTING_USER\\\" ]; then
-            CONTAINER_USER=\\\$EXISTING_USER
-          else
-            CONTAINER_USER=$USERNAME
-            groupadd -g $GROUPID \\\$CONTAINER_USER 2>/dev/null || true
-            useradd -u $USERID -g $GROUPID -m -s /bin/bash \\\$CONTAINER_USER
-          fi
-
-          # Restore home directory from persistent volume if it exists
-          if [ -d /home-persist/\\\$CONTAINER_USER ]; then
-            cp -a /home-persist/\\\$CONTAINER_USER/. /home/\\\$CONTAINER_USER/
-          fi
-
-          # Display setup information with prompt
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"Container Setup Complete\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"Container user:      \\\$CONTAINER_USER\\\"
-          echo \\\"UID:GID:             $USERID:$GROUPID\\\"
-          echo \\\"Working directory:   $MOUNTDIR\\\"
-          echo \\\"                     → mounted at /workspace\\\"
-          echo \\\"═══════════════════════════════════════════════════════════════\\\"
-          echo \\\"\\\"
-          echo \\\"Press Enter to start Claude Code with --dangerously-skip-permissions\\\"
-          read
-
-          # Run Claude and EXIT (no debug shell)
-          su - \\\$CONTAINER_USER -c \\\"cd /workspace && $CLAUDE_CMD\\\"
-
-          # Save home directory
-          mkdir -p /home-persist/\\\$CONTAINER_USER
-          cp -a /home/\\\$CONTAINER_USER/. /home-persist/\\\$CONTAINER_USER/
-        \"" "$LOGFILE"
+        /bin/bash -c '$VERBOSE_SCRIPT'" "$LOGFILE"
     else
       # Fallback without script command
       log_message "Warning: 'script' command not found. Docker session output will not be logged."
@@ -573,43 +524,7 @@ else
         -it \
         --rm \
         "$DOCKER_IMAGE" \
-        /bin/bash -c "
-          # Find if a user with our UID already exists
-          EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
-
-          if [ -n \"\$EXISTING_USER\" ]; then
-            CONTAINER_USER=\$EXISTING_USER
-          else
-            CONTAINER_USER=$USERNAME
-            groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
-            useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
-          fi
-
-          # Restore home directory from persistent volume if it exists
-          if [ -d /home-persist/\$CONTAINER_USER ]; then
-            cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
-          fi
-
-          # Display setup information with prompt
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"Container Setup Complete\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"Container user:      \$CONTAINER_USER\"
-          echo \"UID:GID:             $USERID:$GROUPID\"
-          echo \"Working directory:   $MOUNTDIR\"
-          echo \"                     → mounted at /workspace\"
-          echo \"═══════════════════════════════════════════════════════════════\"
-          echo \"\"
-          echo \"Press Enter to start Claude Code with --dangerously-skip-permissions\"
-          read
-
-          # Run Claude and EXIT (no debug shell)
-          su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
-
-          # Save home directory
-          mkdir -p /home-persist/\$CONTAINER_USER
-          cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
-        "
+        /bin/bash -c "$VERBOSE_SCRIPT"
     fi
   else
     # Mode 1: Default (no persistent shell, no full logging)
@@ -619,42 +534,12 @@ else
       -it \
       --rm \
       "$DOCKER_IMAGE" \
-      /bin/bash -c "
-        # Find if a user with our UID already exists
-        EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
-
-        if [ -n \"\$EXISTING_USER\" ]; then
-          CONTAINER_USER=\$EXISTING_USER
-        else
-          CONTAINER_USER=$USERNAME
-          groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
-          useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
-        fi
-
-        # Restore home directory from persistent volume if it exists
-        if [ -d /home-persist/\$CONTAINER_USER ]; then
-          cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
-        fi
-
-        # Display setup information (no prompt in default mode)
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"Container Setup Complete\"
-        echo \"═══════════════════════════════════════════════════════════════\"
-        echo \"Container user:      \$CONTAINER_USER\"
-        echo \"UID:GID:             $USERID:$GROUPID\"
-        echo \"Working directory:   $MOUNTDIR\"
-        echo \"                     → mounted at /workspace\"
-        echo \"═══════════════════════════════════════════════════════════════\"
+      /bin/bash -c "$CONTAINER_USER_SETUP $CONTAINER_BANNER
         echo \"\"
         echo \"Starting Claude Code with --dangerously-skip-permissions...\"
         echo \"\"
-
-        # Run Claude and EXIT (no debug shell)
         su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
-
-        # Save home directory
-        mkdir -p /home-persist/\$CONTAINER_USER
-        cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+        $CONTAINER_SAVE_HOME
       "
   fi
 fi

@@ -2,15 +2,17 @@
 
 ## claude-yolo
 
-- [ ] Add `--headless` flag for non-interactive execution (cron/automation)
+- [x] Add `--headless` flag for non-interactive execution (cron/automation)
   - See PLAN.md "Plan: Add Headless Mode (`--headless`)" for implementation details
-  - See PLAN.md "Refactoring Recommendations" for suggested improvements
+  - Implemented: `--headless` runs Docker without TTY, validates mutual exclusion with `--debug`
 
-- [ ] Add execution time tracking
+- [x] Add execution time tracking
   - Record start time at script launch
   - Calculate and display elapsed time when script exits (e.g., "Completed in 2m 34s")
   - Write execution time to log file
+  - Implemented: Uses EXIT trap to log "Completed in Xm Xs" to console and log file
 
-- [ ] Refactor to reduce code duplication
+- [x] Refactor to reduce code duplication
   - See PLAN.md "Refactoring Recommendations" section 1: "Extract Common Container Setup Script"
-  - Currently 5+ near-identical docker run blocks
+  - Implemented: Extracted CONTAINER_USER_SETUP, CONTAINER_BANNER, CONTAINER_SAVE_HOME, CONTAINER_DEBUG_SHELL
+  - Reduced from 661 lines to 545 lines (17% reduction while adding new features)
