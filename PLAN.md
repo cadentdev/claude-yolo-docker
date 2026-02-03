@@ -659,3 +659,193 @@ The debug mode adds a second dimension to `claude-yo` operation:
 - Four explicit branches to handle all combinations clearly
 
 This design maximizes flexibility while keeping the default fast and simple.
+
+---
+
+# Plan: Add Headless Mode (`--headless`)
+
+> **Status: PROPOSED** - Awaiting implementation
+
+## Problem
+
+`claude-yo` currently requires a TTY because all `docker run` invocations use the `-it` flags. This fails when running from cron or other non-interactive contexts:
+
+```
+the input device is not a TTY
+```
+
+The AI workload itself doesn't need a TTY - Claude Code can run non-interactively with `-p "prompt"`. The TTY requirement is solely from Docker's `-t` flag.
+
+## Solution
+
+Add a `--headless` flag that runs Docker without TTY allocation, enabling cron and other automated execution.
+
+## Implementation
+
+### 1. Add flag to argument parsing (around line 8)
+
+```bash
+REBUILD=false
+VERBOSE=false
+DEBUG=false
+HEADLESS=false  # <-- Add this
+CLAUDE_ARGS=()
+```
+
+### 2. Add case in the argument loop (around line 66)
+
+```bash
+    -d|--debug)
+      DEBUG=true
+      ;;
+    --headless)           # <-- Add this block
+      HEADLESS=true
+      ;;
+    *)
+```
+
+### 3. Update help text (around line 22)
+
+```bash
+echo "  --headless       Run without TTY (for cron/automation)"
+```
+
+### 4. Add validation - headless is incompatible with debug mode (after argument parsing)
+
+```bash
+# Validate flag combinations
+if [ "$HEADLESS" = true ] && [ "$DEBUG" = true ]; then
+  echo "Error: --headless and --debug are mutually exclusive"
+  exit 1
+fi
+```
+
+### 5. Add new execution mode for headless
+
+The headless mode should:
+- Use `docker run` without `-it` (no TTY, no interactive stdin)
+- Skip verbose logging via `script` (which also needs a TTY)
+- Not prompt for Enter or drop to debug shell
+- Preserve exit code from Claude for proper error handling
+- Still save home directory for auth persistence
+
+```bash
+if [ "$HEADLESS" = true ]; then
+  # Headless mode: no TTY, no interactive prompts
+  log_message "Headless mode - running non-interactively"
+
+  docker run \
+    -v "$MOUNTDIR":/workspace \
+    -v claude-yolo-home:/home-persist \
+    --rm \
+    "$DOCKER_IMAGE" \
+    /bin/bash -c "
+      # User setup (same as other modes)
+      EXISTING_USER=\$(getent passwd $USERID | cut -d: -f1)
+
+      if [ -n \"\$EXISTING_USER\" ]; then
+        CONTAINER_USER=\$EXISTING_USER
+      else
+        CONTAINER_USER=$USERNAME
+        groupadd -g $GROUPID \$CONTAINER_USER 2>/dev/null || true
+        useradd -u $USERID -g $GROUPID -m -s /bin/bash \$CONTAINER_USER
+      fi
+
+      # Restore home directory from persistent volume
+      if [ -d /home-persist/\$CONTAINER_USER ]; then
+        cp -a /home-persist/\$CONTAINER_USER/. /home/\$CONTAINER_USER/
+      fi
+
+      # Run Claude directly (no prompts, no TTY)
+      su - \$CONTAINER_USER -c \"cd /workspace && $CLAUDE_CMD\"
+      EXIT_CODE=\$?
+
+      # Save home directory
+      mkdir -p /home-persist/\$CONTAINER_USER
+      cp -a /home/\$CONTAINER_USER/. /home-persist/\$CONTAINER_USER/
+
+      exit \$EXIT_CODE
+    "
+elif [ "$DEBUG" = true ]; then
+  # ... existing debug mode code
+```
+
+## Usage
+
+```bash
+# From cron
+0 4 * * * /path/to/claude-yo --headless -p "/hello" >> /path/to/log 2>&1
+
+# Manual testing
+claude-yo --headless -p "/hello"
+```
+
+## Testing
+
+1. `claude-yo --headless -p "echo hello"` - should complete without TTY error
+2. `claude-yo --headless --debug` - should error with mutual exclusion message
+3. Run from cron and verify execution completes
+4. Verify auth persists across headless runs (the home-persist volume mount)
+
+---
+
+## Refactoring Recommendations
+
+The `--headless` implementation will add a 5th execution mode to a script that already has significant code duplication. Consider these improvements:
+
+### 1. Extract Common Container Setup Script
+
+The user setup, home restore, and home save logic is identical across all modes. Extract to a variable:
+
+```bash
+CONTAINER_SETUP='
+  EXISTING_USER=$(getent passwd USERID_PLACEHOLDER | cut -d: -f1)
+  if [ -n "$EXISTING_USER" ]; then
+    CONTAINER_USER=$EXISTING_USER
+  else
+    CONTAINER_USER=USERNAME_PLACEHOLDER
+    groupadd -g GROUPID_PLACEHOLDER $CONTAINER_USER 2>/dev/null || true
+    useradd -u USERID_PLACEHOLDER -g GROUPID_PLACEHOLDER -m -s /bin/bash $CONTAINER_USER
+  fi
+
+  if [ -d /home-persist/$CONTAINER_USER ]; then
+    cp -a /home-persist/$CONTAINER_USER/. /home/$CONTAINER_USER/
+  fi
+'
+
+CONTAINER_SAVE='
+  mkdir -p /home-persist/$CONTAINER_USER
+  cp -a /home/$CONTAINER_USER/. /home-persist/$CONTAINER_USER/
+'
+```
+
+Then use `sed` to substitute the placeholders before use.
+
+### 2. Headless + Verbose Consideration
+
+The current proposal doesn't address headless+verbose. The `script` command also requires a TTY, so verbose logging would need a different approach in headless mode (simple output redirection rather than `script`). Consider:
+
+- `--headless` alone: output goes to stdout/stderr (captured by cron redirection)
+- `--headless --verbose`: redirect docker output to log file directly
+
+### 3. Auto-Detection Option
+
+Consider auto-detecting no TTY with `[ -t 0 ]` as a fallback:
+
+```bash
+# Auto-detect headless if no TTY available
+if [ "$HEADLESS" != true ] && ! [ -t 0 ]; then
+  log_message "No TTY detected, enabling headless mode automatically"
+  HEADLESS=true
+fi
+```
+
+This would make cron jobs "just work" without requiring `--headless`, but explicit is often more predictable.
+
+### 4. Exit Code Propagation
+
+The proposal correctly preserves exit codes with `EXIT_CODE=$?`. Consider adding this to other modes for consistency - currently the default mode doesn't explicitly preserve Claude's exit code.
+
+### 5. Keep Setup Banner in Logs
+
+For cron debugging, the "Container Setup Complete" banner is useful. Rather than removing it, route it through `log_message` so it appears in the log file but not cluttering stdout.
