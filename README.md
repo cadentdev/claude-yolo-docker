@@ -8,6 +8,8 @@ A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` i
 
 This project creates a safe, isolated Docker container for running Claude Code in "YOLO mode" (skipping permission prompts). The container only has access to your current project directory, protecting the rest of your system.
 
+The `--headless` option enables non-interactive execution without TTY allocation, making it ideal for cron jobs, CI/CD pipelines, and even running `claude-yo` from within Claude Code itself for automated workflows.
+
 ## Philosophy
 
 - **Keep it simple**: The container and launch script are intended for one thing: run YOLO Claude Code in a restricted environment. The container includes Python 3.12 and Node.js 20 for running code, but intentionally excludes version control tools.
