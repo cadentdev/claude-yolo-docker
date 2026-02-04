@@ -8,6 +8,8 @@ A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` i
 
 This project creates a safe, isolated Docker container for running Claude Code in "YOLO mode" (skipping permission prompts). The container only has access to your current project directory, protecting the rest of your system.
 
+The `--headless` option enables non-interactive execution without TTY allocation, making it ideal for cron jobs, CI/CD pipelines, and even running `claude-yo` from within Claude Code itself for automated workflows.
+
 ## Philosophy
 
 - **Keep it simple**: The container and launch script are intended for one thing: run YOLO Claude Code in a restricted environment. The container includes Python 3.12 and Node.js 20 for running code, but intentionally excludes version control tools.
@@ -23,8 +25,10 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - **User Mapping**: Files created by Claude maintain your user ownership
 - **Interactive Mode**: Drop directly into Claude Code's CLI prompt
 - **Debug Mode**: Optional persistent shell access after Claude exits for exploration and troubleshooting
+- **Headless Mode**: Non-interactive execution for cron jobs and CI/CD automation
 - **Session Logging**: Automatic logging of all sessions with verbose mode for full capture
-- **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing)
+- **Execution Time Tracking**: Displays elapsed time when sessions complete
+- **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing, automation)
 - **Per-Project Customization**: Install project-specific tools via `.claude-yo.yml` config file
 
 ## Default Docker Image
@@ -125,8 +129,9 @@ Alpine-based images (e.g., `python:3.12-alpine`) are **not supported** due to mi
 
 - Docker installed and running
 - Bash shell
-- Claude account (you'll authenticate in-container on first run)
-- **For initial authentication**: GUI environment with browser access (SSH sessions without X11 forwarding won't work for first-time auth)
+- Claude account with one of:
+  - **Pro/Max subscription**: Requires GUI environment with browser for OAuth authentication
+  - **API key**: Can authenticate in any terminal (no browser needed)
 
 ## Installation
 
@@ -191,7 +196,12 @@ cd ~/my-project
 claude-yo
 ```
 
-On first run, you'll be prompted to authenticate with your Claude account. **Note:** Authentication requires opening a browser, so your first run must be in a GUI environment (not over SSH without X11 forwarding). Once authenticated, the session persists in a Docker volume, so subsequent runs work fine over SSH.
+On first run, you'll need to authenticate. Run Claude Code interactively (without `--headless`) and use the `/login` command:
+
+- **Pro/Max users**: Authentication opens a browser for OAuth. You must run from a GUI environment (not SSH without X11 forwarding).
+- **API key users**: Enter your API key directly in the terminal. Works in any environment.
+
+Once authenticated, the session persists in a Docker volume, so subsequent runs (including `--headless` and SSH sessions) work without re-authenticating.
 
 After authentication, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
 
@@ -224,6 +234,8 @@ git push
 
 This keeps your git history clean and prevents accidental commits from inside the sandbox.
 
+**Tip:** For long, uninterrupted Claude Code sessions, consider switching to a new git branch to isolate your changes even further.
+
 ### Command-Line Options
 
 **Display help:**
@@ -247,7 +259,7 @@ claude-yo --model sonnet
 claude-yo -d -p "Fix the failing tests" --model opus
 ```
 
-Wrapper flags (`-r`, `-v`, `-d`, `-h`) are intentionally chosen to avoid collision with Claude Code's flags.
+Wrapper flags (`-r`, `-v`, `-d`, `-h`, `--headless`) are intentionally chosen to avoid collision with Claude Code's flags.
 
 **Force rebuild (update Claude Code or start fresh):**
 ```bash
@@ -288,6 +300,17 @@ The `--debug` flag will:
 - Allow you to explore the container, test commands, or inspect files
 - Save authentication data when you type `exit` to leave
 
+**Enable headless mode (for cron/automation):**
+```bash
+claude-yo --headless -p "Run the test suite"
+```
+
+The `--headless` flag will:
+- Run Docker without TTY allocation (no interactive terminal)
+- Skip all prompts and banners for clean output
+- Preserve Claude's exit code for error handling in scripts
+- Cannot be combined with `--debug` (mutually exclusive)
+
 **Combine flags for different workflows:**
 ```bash
 # Fast workflow (default)
@@ -301,6 +324,9 @@ claude-yo --debug
 
 # Persistent shell + full logging (complete audit trail)
 claude-yo --debug --verbose
+
+# Non-interactive for cron/CI
+claude-yo --headless -p "Run tests and report results"
 
 # Rebuild with any mode
 claude-yo --rebuild --debug
@@ -316,6 +342,7 @@ The `--debug` and `--verbose` flags control two independent aspects of `claude-y
 | **Verbose** | `--verbose` | ✅ Yes | Immediate exit | Full session | Review/debugging |
 | **Debug** | `--debug` | ✅ Yes | Persistent shell | Wrapper only | Interactive exploration |
 | **Debug + Verbose** | `--debug --verbose` | ✅ Yes | Persistent shell | Full session | Complete audit trail |
+| **Headless** | `--headless` | ❌ No | Immediate exit | Wrapper only | Cron/CI automation |
 
 **When to use each mode:**
 
@@ -323,6 +350,7 @@ The `--debug` and `--verbose` flags control two independent aspects of `claude-y
 - **Verbose**: When you need to review Claude's changes or debug issues. Creates complete session logs.
 - **Debug**: When you want to explore the container, test commands, or inspect file changes before exiting.
 - **Debug + Verbose**: When you need both exploration and a complete log for debugging complex issues.
+- **Headless**: For automated tasks like cron jobs, CI pipelines, or scripts. No TTY required.
 
 ### Updating Claude Code
 
@@ -348,6 +376,15 @@ This is the recommended way to update Claude Code, as it ensures you're always r
 ## Session Logging
 
 All `claude-yo` sessions are automatically logged to help with debugging and tracking script operations.
+
+### Execution Time Tracking
+
+Every session displays the total elapsed time when it completes:
+```
+Completed in 2m 34s
+```
+
+This is logged to both the console and the log file, making it easy to track how long tasks take.
 
 ### Log Location
 
@@ -451,10 +488,12 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 **Image won't build**: Check that Docker is running and you have internet access for npm packages. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
 
-**Authentication fails over SSH**: Claude Code authentication requires browser access. For first-time authentication:
+**Authentication fails over SSH (Pro/Max users)**: OAuth authentication requires browser access. For first-time authentication:
 - Run `claude-yo` from a local terminal in a GUI environment, OR
 - Use SSH with X11 forwarding enabled (`ssh -X` or `ssh -Y`), OR
 - Authenticate on a different machine first, then copy the `claude-yolo-home` volume to your SSH server
+
+**API key users** can authenticate directly over SSH by running `/login` and entering their API key.
 
 **Authentication not persisting**: The auth data is stored in a Docker volume named `claude-yolo-home`. Check it exists with `docker volume ls`. To reset authentication, remove the volume: `docker volume rm claude-yolo-home`
 

@@ -664,7 +664,7 @@ This design maximizes flexibility while keeping the default fast and simple.
 
 # Plan: Add Headless Mode (`--headless`)
 
-> **Status: PROPOSED** - Awaiting implementation
+> **Status: IMPLEMENTED** - This plan has been fully implemented. See `claude-yo` for the current implementation.
 
 ## Problem
 
