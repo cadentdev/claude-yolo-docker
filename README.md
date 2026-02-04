@@ -23,8 +23,10 @@ This project creates a safe, isolated Docker container for running Claude Code i
 - **User Mapping**: Files created by Claude maintain your user ownership
 - **Interactive Mode**: Drop directly into Claude Code's CLI prompt
 - **Debug Mode**: Optional persistent shell access after Claude exits for exploration and troubleshooting
+- **Headless Mode**: Non-interactive execution for cron jobs and CI/CD automation
 - **Session Logging**: Automatic logging of all sessions with verbose mode for full capture
-- **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing)
+- **Execution Time Tracking**: Displays elapsed time when sessions complete
+- **Flexible Workflows**: Combine flags for different use cases (fast, debugging, auditing, automation)
 - **Per-Project Customization**: Install project-specific tools via `.claude-yo.yml` config file
 
 ## Default Docker Image
@@ -247,7 +249,7 @@ claude-yo --model sonnet
 claude-yo -d -p "Fix the failing tests" --model opus
 ```
 
-Wrapper flags (`-r`, `-v`, `-d`, `-h`) are intentionally chosen to avoid collision with Claude Code's flags.
+Wrapper flags (`-r`, `-v`, `-d`, `-h`, `--headless`) are intentionally chosen to avoid collision with Claude Code's flags.
 
 **Force rebuild (update Claude Code or start fresh):**
 ```bash
@@ -288,6 +290,17 @@ The `--debug` flag will:
 - Allow you to explore the container, test commands, or inspect files
 - Save authentication data when you type `exit` to leave
 
+**Enable headless mode (for cron/automation):**
+```bash
+claude-yo --headless -p "Run the test suite"
+```
+
+The `--headless` flag will:
+- Run Docker without TTY allocation (no interactive terminal)
+- Skip all prompts and banners for clean output
+- Preserve Claude's exit code for error handling in scripts
+- Cannot be combined with `--debug` (mutually exclusive)
+
 **Combine flags for different workflows:**
 ```bash
 # Fast workflow (default)
@@ -301,6 +314,9 @@ claude-yo --debug
 
 # Persistent shell + full logging (complete audit trail)
 claude-yo --debug --verbose
+
+# Non-interactive for cron/CI
+claude-yo --headless -p "Run tests and report results"
 
 # Rebuild with any mode
 claude-yo --rebuild --debug
@@ -316,6 +332,7 @@ The `--debug` and `--verbose` flags control two independent aspects of `claude-y
 | **Verbose** | `--verbose` | ✅ Yes | Immediate exit | Full session | Review/debugging |
 | **Debug** | `--debug` | ✅ Yes | Persistent shell | Wrapper only | Interactive exploration |
 | **Debug + Verbose** | `--debug --verbose` | ✅ Yes | Persistent shell | Full session | Complete audit trail |
+| **Headless** | `--headless` | ❌ No | Immediate exit | Wrapper only | Cron/CI automation |
 
 **When to use each mode:**
 
@@ -323,6 +340,7 @@ The `--debug` and `--verbose` flags control two independent aspects of `claude-y
 - **Verbose**: When you need to review Claude's changes or debug issues. Creates complete session logs.
 - **Debug**: When you want to explore the container, test commands, or inspect file changes before exiting.
 - **Debug + Verbose**: When you need both exploration and a complete log for debugging complex issues.
+- **Headless**: For automated tasks like cron jobs, CI pipelines, or scripts. No TTY required.
 
 ### Updating Claude Code
 
@@ -348,6 +366,15 @@ This is the recommended way to update Claude Code, as it ensures you're always r
 ## Session Logging
 
 All `claude-yo` sessions are automatically logged to help with debugging and tracking script operations.
+
+### Execution Time Tracking
+
+Every session displays the total elapsed time when it completes:
+```
+Completed in 2m 34s
+```
+
+This is logged to both the console and the log file, making it easy to track how long tasks take.
 
 ### Log Location
 
