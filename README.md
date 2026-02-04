@@ -127,8 +127,9 @@ Alpine-based images (e.g., `python:3.12-alpine`) are **not supported** due to mi
 
 - Docker installed and running
 - Bash shell
-- Claude account (you'll authenticate in-container on first run)
-- **For initial authentication**: GUI environment with browser access (SSH sessions without X11 forwarding won't work for first-time auth)
+- Claude account with one of:
+  - **Pro/Max subscription**: Requires GUI environment with browser for OAuth authentication
+  - **API key**: Can authenticate in any terminal (no browser needed)
 
 ## Installation
 
@@ -193,7 +194,12 @@ cd ~/my-project
 claude-yo
 ```
 
-On first run, you'll be prompted to authenticate with your Claude account. **Note:** Authentication requires opening a browser, so your first run must be in a GUI environment (not over SSH without X11 forwarding). Once authenticated, the session persists in a Docker volume, so subsequent runs work fine over SSH.
+On first run, you'll need to authenticate. Run Claude Code interactively (without `--headless`) and use the `/login` command:
+
+- **Pro/Max users**: Authentication opens a browser for OAuth. You must run from a GUI environment (not SSH without X11 forwarding).
+- **API key users**: Enter your API key directly in the terminal. Works in any environment.
+
+Once authenticated, the session persists in a Docker volume, so subsequent runs (including `--headless` and SSH sessions) work without re-authenticating.
 
 After authentication, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
 
@@ -478,10 +484,12 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 **Image won't build**: Check that Docker is running and you have internet access for npm packages. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
 
-**Authentication fails over SSH**: Claude Code authentication requires browser access. For first-time authentication:
+**Authentication fails over SSH (Pro/Max users)**: OAuth authentication requires browser access. For first-time authentication:
 - Run `claude-yo` from a local terminal in a GUI environment, OR
 - Use SSH with X11 forwarding enabled (`ssh -X` or `ssh -Y`), OR
 - Authenticate on a different machine first, then copy the `claude-yolo-home` volume to your SSH server
+
+**API key users** can authenticate directly over SSH by running `/login` and entering their API key.
 
 **Authentication not persisting**: The auth data is stored in a Docker volume named `claude-yolo-home`. Check it exists with `docker volume ls`. To reset authentication, remove the volume: `docker volume rm claude-yolo-home`
 
