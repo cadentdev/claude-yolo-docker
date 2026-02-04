@@ -129,6 +129,38 @@ To reduce code duplication across the 5 execution modes, common container setup 
 - `CONTAINER_SAVE_HOME`: Home directory persistence
 - `CONTAINER_DEBUG_SHELL`: Debug shell messaging and user switch
 
+## Versioning
+
+This project uses **dual versioning**: a VERSION variable in the script AND git tags.
+
+### How It Works
+- `VERSION` variable at top of `claude-yo` (~line 5) - displayed by `--version` flag
+- Git tags (e.g., `v1.0.0`) - used for GitHub releases and commit references
+
+### When Releasing a New Version
+
+**IMPORTANT:** Always update BOTH:
+
+1. **Update the VERSION variable** in `claude-yo`:
+   ```bash
+   VERSION="1.1.0"  # Change this line
+   ```
+
+2. **Create a matching git tag**:
+   ```bash
+   git add claude-yo
+   git commit -m "chore: bump version to 1.1.0"
+   git tag -a v1.1.0 -m "Release v1.1.0"
+   git push && git push --tags
+   ```
+
+### Version Format
+Follow [Semantic Versioning](https://semver.org/):
+- **MAJOR.MINOR.PATCH** (e.g., `1.2.3`)
+- MAJOR: Breaking changes
+- MINOR: New features (backwards compatible)
+- PATCH: Bug fixes
+
 ## Security Considerations
 
 **Directory Isolation**: Claude has full access to whatever directory is mounted. Users must `cd` to their specific project directory before running `./claude-yo`. Never run from home directory or system directories.
