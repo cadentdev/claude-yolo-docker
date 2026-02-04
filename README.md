@@ -234,6 +234,8 @@ git push
 
 This keeps your git history clean and prevents accidental commits from inside the sandbox.
 
+**Tip:** For long, uninterrupted Claude Code sessions, consider switching to a new git branch to isolate your changes even further.
+
 ### Command-Line Options
 
 **Display help:**
