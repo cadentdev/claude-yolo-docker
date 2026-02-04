@@ -2,7 +2,7 @@
 
 # Version number - update this AND create a matching git tag for releases
 # See CLAUDE.md "Versioning" section for details
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Parse arguments
 # Wrapper flags are parsed here; all other arguments pass through to Claude Code.
