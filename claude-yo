@@ -135,9 +135,12 @@ format_elapsed_time() {
 
 # Log execution time on exit
 log_execution_time() {
-  local end_time=$(date +%s)
-  local elapsed=$((end_time - START_TIME))
-  local formatted=$(format_elapsed_time $elapsed)
+  local end_time
+  local elapsed
+  local formatted
+  end_time=$(date +%s)
+  elapsed=$((end_time - START_TIME))
+  formatted=$(format_elapsed_time $elapsed)
   log_message "Completed in $formatted"
 }
 
@@ -327,7 +330,7 @@ if [ -f "$CONFIG_FILE" ]; then
     generate_project_dockerfile "$CONFIG_FILE" "$TEMP_DOCKERFILE"
 
     log_message "Generated Dockerfile:"
-    cat "$TEMP_DOCKERFILE" | tee -a "$LOGFILE"
+    tee -a "$LOGFILE" < "$TEMP_DOCKERFILE"
     log_message ""
 
     if ! docker build -t "$CACHE_TAG" -f "$TEMP_DOCKERFILE" "$SCRIPT_DIR" 2>&1 | tee -a "$LOGFILE"; then
@@ -377,6 +380,11 @@ fi
 # Common Container Script Components (to reduce duplication)
 # =============================================================================
 
+# shellcheck disable=SC2016
+# Note: Single quotes are intentional below - these script fragments run inside
+# the container, so variables like $CONTAINER_USER must expand at runtime there,
+# not when this script defines them.
+
 # User setup: find existing user with matching UID or create new user
 # This script fragment is used inside the container to set up the user
 CONTAINER_USER_SETUP='
@@ -396,6 +404,7 @@ CONTAINER_USER_SETUP='
 '
 
 # Container setup banner (shown after user is set up)
+# shellcheck disable=SC2016
 CONTAINER_BANNER='
   echo "═══════════════════════════════════════════════════════════════"
   echo "Container Setup Complete"
@@ -408,12 +417,14 @@ CONTAINER_BANNER='
 '
 
 # Home directory save (run at the end of session)
+# shellcheck disable=SC2016
 CONTAINER_SAVE_HOME='
   mkdir -p /home-persist/$CONTAINER_USER
   cp -a /home/$CONTAINER_USER/. /home-persist/$CONTAINER_USER/
 '
 
 # Debug shell sequence (shown after Claude exits in debug mode)
+# shellcheck disable=SC2016
 CONTAINER_DEBUG_SHELL='
   echo ""
   echo "═══════════════════════════════════════════════════════════════"
