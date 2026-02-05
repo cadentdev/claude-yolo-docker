@@ -182,17 +182,23 @@ generate_project_dockerfile() {
   base_image=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
 
   if [ -n "$base_image" ]; then
-    # Custom base image - need to install Node.js and Claude Code
+    # Custom base image - install Claude Code using native installer
     {
       echo "FROM $base_image"
       echo ""
-      echo "# Install Node.js and Claude Code (required for claude-yo)"
+      echo "# Install dependencies for Claude Code native installer"
       echo "RUN apt-get update && \\"
       echo "    apt-get install -y curl yq && \\"
-      echo "    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \\"
-      echo "    apt-get install -y nodejs && \\"
-      echo "    rm -rf /var/lib/apt/lists/* && \\"
-      echo "    npm install -g @anthropic-ai/claude-code"
+      echo "    rm -rf /var/lib/apt/lists/*"
+      echo ""
+      echo "# Install Claude Code using native installer (recommended method)"
+      echo "ENV HOME=/root"
+      echo "RUN curl -fsSL https://claude.ai/install.sh | bash -s stable && \\"
+      echo "    /root/.local/bin/claude --version"
+      echo ""
+      echo "# Add Claude Code to PATH and disable auto-updates in container"
+      echo 'ENV PATH="/root/.local/bin:${PATH}"'
+      echo "ENV DISABLE_AUTOUPDATER=1"
       echo ""
     } > "$output_file"
   else

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Docker wrapper for running Claude Code with `--dangerously-skip-permissions` in isolated environments. The project consists of:
 
-- **Dockerfile**: Python 3.12 container with Node.js 20 that installs Claude Code globally
+- **Dockerfile**: Python 3.12 container with Node.js 20 that installs Claude Code via native installer
 - **claude-yo**: Bash wrapper script that handles container lifecycle and user mapping
 - **Architecture**: Single-container design with persistent authentication via Docker volumes
 
@@ -56,7 +56,7 @@ Projects can include a `.claude-yo.yml` file to specify additional tools and pac
 5. Uses the project image instead of the base image for that session
 
 The YAML schema supports:
-- `base`: Custom Docker base image (e.g., `node:20-bookworm-slim` for Node.js-only projects). When specified, Node.js and Claude Code are automatically installed if not present.
+- `base`: Custom Docker base image (e.g., `node:20-bookworm-slim` for Node.js-only projects). When specified, Claude Code is automatically installed via native installer.
 - `apt`: System packages via apt-get
 - `pip`: Python packages (Python 3.12 is included in the default image)
 - `npm`: Global npm packages
