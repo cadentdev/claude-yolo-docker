@@ -4,8 +4,8 @@
 
 ### Sequence
 1. Base image: `python:3.12-slim-bookworm` (no UID collision issues)
-2. Build time: Install Node.js 20 via NodeSource
-3. Build time: `npm install -g @anthropic-ai/claude-code` (system-wide, requires root)
+2. Build time: Install Node.js 20 via NodeSource (for user projects)
+3. Build time: Install Claude Code via native installer to `~/.local/bin/claude`
 4. Runtime: Create user account matching host UID/GID
 5. Runtime: Restore home directory from persistent volume
 6. Runtime: Execute `claude --dangerously-skip-permissions` as mapped user
@@ -14,7 +14,7 @@
 
 **Python as Default Base**
 - Most AI/ML projects need Python, making it the sensible default
-- Node.js is installed at build time for Claude Code
+- Node.js is installed at build time for user projects (not required for Claude Code)
 - Projects needing only Node.js can use `base: node:20-bookworm-slim` in `.claude-yo.yml`
 
 **Git Intentionally Excluded**
@@ -23,7 +23,8 @@
 - Keeps the container focused on code execution, not version control
 
 **Controlled Updates via `--rebuild`**
-- Claude Code is installed globally by root during image build
+- Claude Code is installed via native installer during image build
+- Auto-updates are disabled in the container (DISABLE_AUTOUPDATER=1)
 - Users update via `--rebuild` flag for controlled, reproducible updates
 - This is a deliberate design choice: reproducibility and fast startup are more valuable than automatic updates in a containerized environment
 
@@ -180,13 +181,21 @@ For a containerized environment, **controlled updates might be preferable** to e
 ```dockerfile
 FROM python:3.12-slim-bookworm
 
-# Install Node.js 20, yq for YAML parsing, and Claude Code
+# Install Node.js 20 and yq for YAML parsing
 RUN apt-get update && \
     apt-get install -y curl yq && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g @anthropic-ai/claude-code
+    rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code using native installer (recommended method)
+ENV HOME=/root
+RUN curl -fsSL https://claude.ai/install.sh | bash -s stable && \
+    /root/.local/bin/claude --version
+
+# Add Claude Code to PATH and disable auto-updates in container
+ENV PATH="/root/.local/bin:${PATH}"
+ENV DISABLE_AUTOUPDATER=1
 
 WORKDIR /workspace
 CMD ["/bin/bash"]
@@ -224,13 +233,21 @@ CMD ["/bin/bash"]
 ```dockerfile
 FROM python:3.12-slim-bookworm
 
-# Install Node.js 20, yq for YAML parsing, and Claude Code
+# Install Node.js 20 and yq for YAML parsing
 RUN apt-get update && \
     apt-get install -y curl yq && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/* && \
-    npm install -g @anthropic-ai/claude-code
+    rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code using native installer (recommended method)
+ENV HOME=/root
+RUN curl -fsSL https://claude.ai/install.sh | bash -s stable && \
+    /root/.local/bin/claude --version
+
+# Add Claude Code to PATH and disable auto-updates in container
+ENV PATH="/root/.local/bin:${PATH}"
+ENV DISABLE_AUTOUPDATER=1
 
 WORKDIR /workspace
 CMD ["/bin/bash"]
@@ -251,7 +268,7 @@ CMD ["/bin/bash"]
 - ❌ Loss of Docker layer caching defeats container benefits
 - ❌ Reproducibility suffers
 
-**Core principle:** Don't conflate build-time and runtime concerns. System dependencies (Python, Node.js) belong in the image. User-specific tools (Claude Code) can be dual-installed if needed.
+**Core principle:** Don't conflate build-time and runtime concerns. System dependencies (Python, Node.js) belong in the image. Claude Code is installed via native installer at build time with auto-updates disabled for reproducibility.
 
 ## Conclusion
 

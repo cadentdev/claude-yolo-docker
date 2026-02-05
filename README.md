@@ -36,8 +36,8 @@ The `--headless` option enables non-interactive execution without TTY allocation
 The default container is based on `python:3.12-slim-bookworm` and includes:
 
 - **Python 3.12** - Full Python environment with pip
-- **Node.js 20** - Required for Claude Code (installed via NodeSource)
-- **Claude Code** - The Anthropic CLI tool
+- **Node.js 20** - Available for user projects (installed via NodeSource)
+- **Claude Code** - Installed via native installer (recommended by Anthropic)
 - **Basic Linux utilities** - Standard tools like `ls`, `grep`, `cat`, etc.
 
 **What's NOT included by design:**
@@ -93,7 +93,7 @@ npm:
 
 When you specify `base:`, claude-yo will:
 1. Start from your specified image instead of the default Python base
-2. Automatically install Node.js 20 and Claude Code (if not already present)
+2. Automatically install Claude Code via native installer
 3. Apply your apt/pip/npm/run customizations
 
 **Supported base images**: Any Debian-based image from [Docker Hub Official Images](https://hub.docker.com/search?image_filter=official&q=). Common choices:
@@ -364,7 +364,7 @@ This is the recommended way to update Claude Code, as it ensures you're always r
 ## How It Works
 
 1. The wrapper script (`claude-yo`) captures your user ID, group ID, and current directory
-2. It builds a Docker image (first run only) with Python 3.12, Node.js 20, and Claude Code installed
+2. It builds a Docker image (first run only) with Python 3.12, Node.js 20, and Claude Code (via native installer)
 3. It starts a container that:
    - Mounts your current directory to `/workspace`
    - Mounts a persistent Docker volume for authentication data
@@ -486,7 +486,7 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 ## Troubleshooting
 
-**Image won't build**: Check that Docker is running and you have internet access for npm packages. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
+**Image won't build**: Check that Docker is running and you have internet access for the Claude Code native installer. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
 
 **Authentication fails over SSH (Pro/Max users)**: OAuth authentication requires browser access. For first-time authentication:
 - Run `claude-yo` from a local terminal in a GUI environment, OR
