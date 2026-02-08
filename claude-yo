@@ -412,6 +412,13 @@ CONTAINER_USER_SETUP='
   if [ -d /home-persist/$CONTAINER_USER ]; then
     cp -a /home-persist/$CONTAINER_USER/. /home/$CONTAINER_USER/
   fi
+
+  # Copy host credentials into container user home (mounted read-only)
+  if [ -f /host-claude/.credentials.json ]; then
+    mkdir -p /home/$CONTAINER_USER/.claude
+    cp /host-claude/.credentials.json /home/$CONTAINER_USER/.claude/
+    chown -R '"$USERID"':'"$GROUPID"' /home/$CONTAINER_USER/.claude
+  fi
 '
 
 # Container setup banner (shown after user is set up)
@@ -461,6 +468,7 @@ if [ "$HEADLESS" = true ]; then
   docker run \
     -v "$MOUNTDIR":/workspace \
     -v claude-yolo-home:/home-persist \
+    -v "$HOME/.claude:/host-claude:ro" \
     --rm \
     "$DOCKER_IMAGE" \
     /bin/bash -c "$CONTAINER_USER_SETUP
@@ -489,6 +497,7 @@ elif [ "$DEBUG" = true ]; then
       script -q -f -c "docker run \
         -v \"$MOUNTDIR\":/workspace \
         -v claude-yolo-home:/home-persist \
+        -v \"$HOME/.claude:/host-claude:ro\" \
         -it \
         --rm \
         \"$DOCKER_IMAGE\" \
@@ -499,6 +508,7 @@ elif [ "$DEBUG" = true ]; then
       docker run \
         -v "$MOUNTDIR":/workspace \
         -v claude-yolo-home:/home-persist \
+        -v "$HOME/.claude:/host-claude:ro" \
         -it \
         --rm \
         "$DOCKER_IMAGE" \
@@ -511,6 +521,7 @@ elif [ "$DEBUG" = true ]; then
     docker run \
       -v "$MOUNTDIR":/workspace \
       -v claude-yolo-home:/home-persist \
+      -v "$HOME/.claude:/host-claude:ro" \
       -it \
       --rm \
       "$DOCKER_IMAGE" \
@@ -542,6 +553,7 @@ else
       script -q -f -c "docker run \
         -v \"$MOUNTDIR\":/workspace \
         -v claude-yolo-home:/home-persist \
+        -v \"$HOME/.claude:/host-claude:ro\" \
         -it \
         --rm \
         \"$DOCKER_IMAGE\" \
@@ -552,6 +564,7 @@ else
       docker run \
         -v "$MOUNTDIR":/workspace \
         -v claude-yolo-home:/home-persist \
+        -v "$HOME/.claude:/host-claude:ro" \
         -it \
         --rm \
         "$DOCKER_IMAGE" \
@@ -562,6 +575,7 @@ else
     docker run \
       -v "$MOUNTDIR":/workspace \
       -v claude-yolo-home:/home-persist \
+      -v "$HOME/.claude:/host-claude:ro" \
       -it \
       --rm \
       "$DOCKER_IMAGE" \
