@@ -197,6 +197,7 @@ generate_project_dockerfile() {
       echo "    /root/.local/bin/claude --version"
       echo ""
       echo "# Add Claude Code to PATH and disable auto-updates in container"
+      # shellcheck disable=SC2016
       echo 'ENV PATH="/root/.local/bin:${PATH}"'
       echo "ENV DISABLE_AUTOUPDATER=1"
       echo ""
