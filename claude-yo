@@ -196,7 +196,11 @@ generate_project_dockerfile() {
       echo "RUN curl -fsSL https://claude.ai/install.sh | bash -s stable && \\"
       echo "    /root/.local/bin/claude --version"
       echo ""
-      echo "# Add Claude Code to PATH and disable auto-updates in container"
+      echo "# Make Claude Code accessible to all users"
+      echo "RUN chmod 755 /root /root/.local /root/.local/bin && \\"
+      echo "    ln -s /root/.local/bin/claude /usr/local/bin/claude"
+      echo ""
+      echo "# Add Claude Code to PATH for root and disable auto-updates in container"
       # shellcheck disable=SC2016
       echo 'ENV PATH="/root/.local/bin:${PATH}"'
       echo "ENV DISABLE_AUTOUPDATER=1"

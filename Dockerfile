@@ -14,7 +14,12 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s stable && \
     # Verify installation
     /root/.local/bin/claude --version
 
-# Add Claude Code to PATH and disable auto-updates in container
+# Make Claude Code accessible to all users (native installer puts it in /root/.local/bin)
+# chmod makes the path traversable; symlink provides a clean global path
+RUN chmod 755 /root /root/.local /root/.local/bin && \
+    ln -s /root/.local/bin/claude /usr/local/bin/claude
+
+# Add Claude Code to PATH for root and disable auto-updates in container
 ENV PATH="/root/.local/bin:${PATH}"
 ENV DISABLE_AUTOUPDATER=1
 
