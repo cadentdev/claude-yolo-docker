@@ -21,7 +21,7 @@ The `--headless` option enables non-interactive execution without TTY allocation
 
 - **Isolation**: Claude Code runs in a Docker container, not directly on your host
 - **Directory Mounting**: Only your current directory is accessible to Claude
-- **Persistent Authentication**: Auth tokens stored in a Docker volume, shared across all projects
+- **Persistent Authentication**: Host `~/.claude` credentials shared automatically; also persisted in a Docker volume across projects
 - **User Mapping**: Files created by Claude maintain your user ownership
 - **Interactive Mode**: Drop directly into Claude Code's CLI prompt
 - **Debug Mode**: Optional persistent shell access after Claude exits for exploration and troubleshooting
@@ -196,12 +196,14 @@ cd ~/my-project
 claude-yo
 ```
 
-On first run, you'll need to authenticate. Run Claude Code interactively (without `--headless`) and use the `/login` command:
+If you're already authenticated with Claude Code on your host machine, your credentials are automatically shared with the container (via a read-only mount of `~/.claude`). No additional setup is needed.
+
+If you're not yet authenticated, run Claude Code interactively (without `--headless`) and use the `/login` command:
 
 - **Pro/Max users**: Authentication opens a browser for OAuth. You must run from a GUI environment (not SSH without X11 forwarding).
 - **API key users**: Enter your API key directly in the terminal. Works in any environment.
 
-Once authenticated, the session persists in a Docker volume, so subsequent runs (including `--headless` and SSH sessions) work without re-authenticating.
+Once authenticated, credentials persist in a Docker volume, so subsequent runs (including `--headless` and SSH sessions) work without re-authenticating.
 
 After authentication, you'll be dropped directly into Claude Code's interactive prompt where you can type your commands.
 
@@ -368,8 +370,10 @@ This is the recommended way to update Claude Code, as it ensures you're always r
 3. It starts a container that:
    - Mounts your current directory to `/workspace`
    - Mounts a persistent Docker volume for authentication data
+   - Mounts your host `~/.claude` directory read-only for credential sharing
    - Creates a user inside the container matching your host UID/GID
-   - Restores authentication from previous sessions (if available)
+   - Copies host credentials into the container (if available), with host credentials taking precedence
+   - Restores remaining authentication from previous sessions via the volume
    - Runs `claude --dangerously-skip-permissions` as that user
    - Saves authentication data back to the volume when you exit
 
@@ -488,14 +492,14 @@ The container provides isolation, but Claude still has unrestricted access to wh
 
 **Image won't build**: Check that Docker is running and you have internet access for the Claude Code native installer. If you see "no such file or directory" for the Dockerfile, ensure you're using the latest version of `claude-yo` which properly resolves symlinks.
 
-**Authentication fails over SSH (Pro/Max users)**: OAuth authentication requires browser access. For first-time authentication:
+**Authentication fails over SSH (Pro/Max users)**: OAuth authentication requires browser access. The easiest approach is to authenticate on your local machine first — `claude-yo` automatically shares host credentials from `~/.claude` with the container. Otherwise:
 - Run `claude-yo` from a local terminal in a GUI environment, OR
 - Use SSH with X11 forwarding enabled (`ssh -X` or `ssh -Y`), OR
 - Authenticate on a different machine first, then copy the `claude-yolo-home` volume to your SSH server
 
 **API key users** can authenticate directly over SSH by running `/login` and entering their API key.
 
-**Authentication not persisting**: The auth data is stored in a Docker volume named `claude-yolo-home`. Check it exists with `docker volume ls`. To reset authentication, remove the volume: `docker volume rm claude-yolo-home`
+**Authentication not persisting**: Credentials come from two sources: your host `~/.claude` directory (mounted read-only) and the Docker volume `claude-yolo-home`. Check the volume exists with `docker volume ls`. If host credentials exist they take precedence. To reset volume authentication, remove the volume: `docker volume rm claude-yolo-home`
 
 **Permission errors**: The script automatically matches your UID/GID, but if you still see issues, check Docker permissions.
 

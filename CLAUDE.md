@@ -16,12 +16,13 @@ This is a Docker wrapper for running Claude Code with `--dangerously-skip-permis
 The wrapper script (`claude-yo:254-258`) captures the host user's UID/GID and creates a matching user inside the container. This ensures files created by Claude maintain proper ownership on the host system.
 
 ### Persistent Authentication
-Authentication tokens are stored in a Docker volume (`claude-yolo-home`) rather than mounting the host's `~/.claude` directory. The container uses reusable script components:
-1. `CONTAINER_USER_SETUP` (`claude-yo:331-345`): Creates user and restores home directory from volume
-2. Runs Claude Code as the mapped user
-3. `CONTAINER_SAVE_HOME` (`claude-yo:360-363`): Saves home directory back to volume on exit
+Authentication uses a dual approach: host credentials and a persistent Docker volume.
 
-This approach allows authentication to persist across container runs and different projects without exposing host credentials.
+1. **Host credential mounting**: The host's `~/.claude/` directory is mounted read-only at `/host-claude` inside the container. During setup, `CONTAINER_USER_SETUP` copies `.credentials.json` from `/host-claude` into the container user's home, so users already authenticated on the host don't need to re-authenticate.
+2. **Volume persistence**: Authentication tokens are also stored in a Docker volume (`claude-yolo-home`). Host credentials take precedence over stale volume data when both exist.
+3. `CONTAINER_SAVE_HOME` (`claude-yo:360-363`): Saves the container user's home directory back to the volume on exit.
+
+This approach provides seamless authentication for host-authenticated users while still supporting standalone container authentication via the volume.
 
 ### Debug Shell Access
 When run with `--debug` flag, after Claude exits the container drops into an interactive bash shell. This allows users to inspect the container state, test commands, or debug issues before the container is removed. Without `--debug`, the container exits immediately after Claude.
@@ -109,9 +110,10 @@ docker build --no-cache -t claude-yolo:latest .
 ## Important Implementation Details
 
 ### Volume Mounts
-The wrapper uses two mounts:
+The wrapper uses three mounts:
 - `-v "$MOUNTDIR":/workspace`: Current directory (project code)
 - `-v claude-yolo-home:/home-persist`: Persistent authentication data
+- `-v "$HOME/.claude:/host-claude:ro"`: Host credentials (read-only)
 
 ### Container User Creation
 The `CONTAINER_USER_SETUP` script component (`claude-yo:331-345`) checks for existing users with matching UID before creating new ones. This handles edge cases where the UID already exists in the base image.
@@ -124,7 +126,7 @@ The wrapper records start time (`claude-yo:101`) and uses an EXIT trap (`claude-
 
 ### Refactored Container Scripts
 To reduce code duplication across the 5 execution modes, common container setup logic is extracted into reusable shell script variables (`claude-yo:325-379`):
-- `CONTAINER_USER_SETUP`: User creation and home directory restoration
+- `CONTAINER_USER_SETUP`: User creation, home directory restoration, and host credential copy
 - `CONTAINER_BANNER`: Setup complete message display
 - `CONTAINER_SAVE_HOME`: Home directory persistence
 - `CONTAINER_DEBUG_SHELL`: Debug shell messaging and user switch
