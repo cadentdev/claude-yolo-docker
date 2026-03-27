@@ -2,7 +2,7 @@
 
 # Version number - update this AND create a matching git tag for releases
 # See CLAUDE.md "Versioning" section for details
-VERSION="1.1.2"
+VERSION="1.2.0"
 
 # Parse arguments
 # Wrapper flags are parsed here; all other arguments pass through to Claude Code.
@@ -12,6 +12,7 @@ REBUILD=false
 VERBOSE=false
 DEBUG=false
 HEADLESS=false
+NETWORK=false
 CLAUDE_ARGS=()
 
 for arg in "$@"; do
@@ -30,6 +31,7 @@ for arg in "$@"; do
       echo "  -v, --verbose    Enable verbose mode with full session logging"
       echo "  -d, --debug      Enable debug mode with persistent container shell"
       echo "  --headless       Run without TTY (for cron/automation)"
+      echo "  --network        Enable container network access (default: isolated)"
       echo "  --version        Display version number"
       echo "  -h, --help       Display this help message"
       echo ""
@@ -81,6 +83,9 @@ for arg in "$@"; do
     --headless)
       HEADLESS=true
       ;;
+    --network)
+      NETWORK=true
+      ;;
     *)
       # Pass unrecognized arguments to Claude Code
       CLAUDE_ARGS+=("$arg")
@@ -106,8 +111,10 @@ fi
 # Setup logging
 LOG_DIR="$HOME/.claude-yolo/logs"
 mkdir -p "$LOG_DIR"
+chmod 0700 "$LOG_DIR"
 TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 LOGFILE="$LOG_DIR/claude-yolo-$TIMESTAMP.log"
+touch "$LOGFILE" && chmod 0600 "$LOGFILE"
 
 # Record start time for execution tracking
 START_TIME=$(date +%s)
@@ -151,24 +158,165 @@ trap log_execution_time EXIT
 # Per-Project Configuration Functions
 # =============================================================================
 
+# Allowed base image patterns (glob-style)
+ALLOWED_BASE_IMAGES=(
+  "python:*"
+  "node:*"
+  "ubuntu:*"
+  "debian:*"
+  "alpine:*"
+  "golang:*"
+  "rust:*"
+  "ruby:*"
+)
+
+# Check if a base image matches the allowlist
+validate_base_image() {
+  local image="$1"
+
+  # Empty is fine — means use default
+  if [ -z "$image" ]; then
+    return 0
+  fi
+
+  for pattern in "${ALLOWED_BASE_IMAGES[@]}"; do
+    # Extract prefix before the wildcard
+    local prefix="${pattern%%\**}"
+    if [[ "$image" == "$prefix"* ]]; then
+      return 0
+    fi
+  done
+
+  log_message "Error: Base image '$image' is not in the allowlist."
+  log_message "Allowed base images: ${ALLOWED_BASE_IMAGES[*]}"
+  log_message "To request a new base image, open an issue on GitHub."
+  return 1
+}
+
+# Blocked commands in run: directives (network, persistence, shell manipulation)
+BLOCKED_RUN_PATTERNS=(
+  "curl"
+  "wget"
+  "nc"
+  "ncat"
+  "netcat"
+  "ssh"
+  "scp"
+  "sftp"
+  "rsync"
+  "apt-get"
+  "apt"
+  "dpkg"
+  "pip"
+  "pip3"
+  "npm"
+  "chmod"
+  "chown"
+  "useradd"
+  "usermod"
+  "groupadd"
+  "mount"
+  "su"
+  "sudo"
+)
+
+# Validate a run: directive command
+validate_run_command() {
+  local cmd="$1"
+
+  # Extract the first word (the command name)
+  local first_word
+  first_word=$(echo "$cmd" | awk '{print $1}')
+  # Strip any path prefix
+  first_word=$(basename "$first_word")
+
+  for blocked in "${BLOCKED_RUN_PATTERNS[@]}"; do
+    if [ "$first_word" = "$blocked" ]; then
+      log_message "Error: Blocked command in run: directive: '$first_word'"
+      log_message "  Full command: $cmd"
+      log_message "  Network, package management, and privilege escalation commands are not allowed in run: directives."
+      log_message "  Use the apt:, pip:, or npm: sections for package installation."
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+# Validate package name against safe pattern
+validate_package_name() {
+  local name="$1"
+  local manager="$2"
+
+  if ! echo "$name" | grep -qE '^[a-zA-Z0-9._@/+-]+$'; then
+    log_message "Error: Invalid $manager package name: '$name'"
+    log_message "  Package names must match: [a-zA-Z0-9._@/+-]+"
+    return 1
+  fi
+  return 0
+}
+
 # Validate config file syntax and security
 validate_config() {
   local config_file="$1"
 
+  # Copy config to temp file to prevent TOCTOU race
+  local config_copy
+  config_copy=$(mktemp)
+  cp "$config_file" "$config_copy"
+
   # Check YAML syntax using yq in a container
-  if ! docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.' /config.yml > /dev/null 2>&1; then
+  if ! docker run --rm -v "$config_copy:/config.yml:ro" claude-yolo:latest yq '.' /config.yml > /dev/null 2>&1; then
     log_message "Error: Invalid YAML syntax in .claude-yo.yml"
+    rm -f "$config_copy"
     return 1
   fi
 
-  # Validate package names don't contain dangerous characters
-  local content
-  content=$(cat "$config_file")
-  if echo "$content" | grep -qE '[;&|`$]'; then
-    log_message "Error: Invalid characters in .claude-yo.yml (shell metacharacters not allowed)"
+  # Validate base image against allowlist
+  local base_image
+  base_image=$(docker run --rm -v "$config_copy:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
+  if ! validate_base_image "$base_image"; then
+    rm -f "$config_copy"
     return 1
   fi
 
+  # Validate package names individually
+  local pkg
+  for pkg in $(docker run --rm -v "$config_copy:/config.yml:ro" claude-yolo:latest yq '.apt[]' /config.yml 2>/dev/null); do
+    if ! validate_package_name "$pkg" "apt"; then
+      rm -f "$config_copy"
+      return 1
+    fi
+  done
+  for pkg in $(docker run --rm -v "$config_copy:/config.yml:ro" claude-yolo:latest yq '.pip[]' /config.yml 2>/dev/null); do
+    if ! validate_package_name "$pkg" "pip"; then
+      rm -f "$config_copy"
+      return 1
+    fi
+  done
+  for pkg in $(docker run --rm -v "$config_copy:/config.yml:ro" claude-yolo:latest yq '.npm[]' /config.yml 2>/dev/null); do
+    if ! validate_package_name "$pkg" "npm"; then
+      rm -f "$config_copy"
+      return 1
+    fi
+  done
+
+  # Validate run: directive commands
+  local run_cmd
+  docker run --rm -v "$config_copy:/config.yml:ro" claude-yolo:latest yq '.run[]' /config.yml 2>/dev/null | while read -r run_cmd; do
+    if [ -n "$run_cmd" ] && ! validate_run_command "$run_cmd"; then
+      rm -f "$config_copy"
+      return 1
+    fi
+  done
+  # Check if the while loop subshell exited with error
+  if [ "${PIPESTATUS[1]}" -ne 0 ]; then
+    rm -f "$config_copy"
+    return 1
+  fi
+
+  # Store validated config copy path for generate_project_dockerfile to use
+  VALIDATED_CONFIG="$config_copy"
   return 0
 }
 
@@ -177,9 +325,12 @@ generate_project_dockerfile() {
   local config_file="$1"
   local output_file="$2"
 
+  # Use validated config copy if available (TOCTOU protection)
+  local effective_config="${VALIDATED_CONFIG:-$config_file}"
+
   # Check if custom base image is specified (strip quotes and whitespace)
   local base_image
-  base_image=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
+  base_image=$(docker run --rm -v "$effective_config:/config.yml:ro" claude-yolo:latest yq '.base // ""' /config.yml 2>/dev/null | tr -d '\n"'"'")
 
   if [ -n "$base_image" ]; then
     # Custom base image - install Claude Code using native installer
@@ -214,27 +365,27 @@ generate_project_dockerfile() {
 
   # apt packages
   local apt_packages
-  apt_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.apt[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  apt_packages=$(docker run --rm -v "$effective_config:/config.yml:ro" claude-yolo:latest yq '.apt[]' /config.yml 2>/dev/null | tr '\n' ' ')
   if [ -n "$apt_packages" ]; then
     echo "RUN apt-get update && apt-get install -y $apt_packages && rm -rf /var/lib/apt/lists/*" >> "$output_file"
   fi
 
   # pip packages
   local pip_packages
-  pip_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.pip[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  pip_packages=$(docker run --rm -v "$effective_config:/config.yml:ro" claude-yolo:latest yq '.pip[]' /config.yml 2>/dev/null | tr '\n' ' ')
   if [ -n "$pip_packages" ]; then
     echo "RUN pip3 install --break-system-packages $pip_packages" >> "$output_file"
   fi
 
   # npm packages
   local npm_packages
-  npm_packages=$(docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.npm[]' /config.yml 2>/dev/null | tr '\n' ' ')
+  npm_packages=$(docker run --rm -v "$effective_config:/config.yml:ro" claude-yolo:latest yq '.npm[]' /config.yml 2>/dev/null | tr '\n' ' ')
   if [ -n "$npm_packages" ]; then
     echo "RUN npm install -g $npm_packages" >> "$output_file"
   fi
 
   # Custom RUN commands
-  docker run --rm -v "$config_file:/config.yml:ro" claude-yolo:latest yq '.run[]' /config.yml 2>/dev/null | while read -r cmd; do
+  docker run --rm -v "$effective_config:/config.yml:ro" claude-yolo:latest yq '.run[]' /config.yml 2>/dev/null | while read -r cmd; do
     if [ -n "$cmd" ]; then
       echo "RUN $cmd" >> "$output_file"
     fi
@@ -266,6 +417,18 @@ get_config_hash() {
 }
 
 # =============================================================================
+
+# Build Docker security flags array
+# Default: network isolated. --network flag enables access.
+# shellcheck disable=SC2034
+DOCKER_EXTRA_FLAGS=()
+if [ "$NETWORK" = false ]; then
+  DOCKER_EXTRA_FLAGS+=("--network=none")
+fi
+DOCKER_EXTRA_FLAGS+=("--cap-drop=ALL" "--security-opt=no-new-privileges")
+
+# String version for use inside script -c commands (where arrays don't work)
+DOCKER_EXTRA_FLAGS_STR="${DOCKER_EXTRA_FLAGS[*]}"
 
 # Get host user info
 USERID=$(id -u)
@@ -370,6 +533,11 @@ if [ -f "$CONFIG_FILE" ]; then
   fi
 
   DOCKER_IMAGE="$CACHE_TAG"
+
+  # Clean up validated config copy (TOCTOU protection temp file)
+  if [ -n "${VALIDATED_CONFIG:-}" ]; then
+    rm -f "$VALIDATED_CONFIG"
+  fi
 fi
 
 # =============================================================================
@@ -408,9 +576,12 @@ CONTAINER_USER_SETUP='
     useradd -u '"$USERID"' -g '"$GROUPID"' -m -s /bin/bash $CONTAINER_USER
   fi
 
-  # Restore home directory from persistent volume if it exists
-  if [ -d /home-persist/$CONTAINER_USER ]; then
-    cp -a /home-persist/$CONTAINER_USER/. /home/$CONTAINER_USER/
+  # Restore only ~/.claude/ from persistent volume (not full home dir)
+  # This prevents shell init backdoors from persisting (SECURITY-REVIEW H1)
+  if [ -d /home-persist/$CONTAINER_USER/.claude ]; then
+    mkdir -p /home/$CONTAINER_USER/.claude
+    cp -a /home-persist/$CONTAINER_USER/.claude/. /home/$CONTAINER_USER/.claude/
+    chown -R '"$USERID"':'"$GROUPID"' /home/$CONTAINER_USER/.claude
   fi
 
   # Copy host credentials into container user home (mounted read-only)
@@ -435,10 +606,16 @@ CONTAINER_BANNER='
 '
 
 # Home directory save (run at the end of session)
+# Only persist ~/.claude/ — excludes shell init files (.bashrc, .profile, .ssh/)
+# to prevent cross-session backdoors (SECURITY-REVIEW H1)
+# Delete credentials before save to prevent volume leakage (SECURITY-REVIEW H2)
 # shellcheck disable=SC2016
 CONTAINER_SAVE_HOME='
-  mkdir -p /home-persist/$CONTAINER_USER
-  cp -a /home/$CONTAINER_USER/. /home-persist/$CONTAINER_USER/
+  rm -f /home/$CONTAINER_USER/.claude/.credentials.json
+  mkdir -p /home-persist/$CONTAINER_USER/.claude
+  if [ -d /home/$CONTAINER_USER/.claude ]; then
+    cp -a /home/$CONTAINER_USER/.claude/. /home-persist/$CONTAINER_USER/.claude/
+  fi
 '
 
 # Debug shell sequence (shown after Claude exits in debug mode)
@@ -469,6 +646,7 @@ if [ "$HEADLESS" = true ]; then
     -v "$MOUNTDIR":/workspace \
     -v claude-yolo-home:/home-persist \
     -v "$HOME/.claude:/host-claude:ro" \
+    "${DOCKER_EXTRA_FLAGS[@]}" \
     --rm \
     "$DOCKER_IMAGE" \
     /bin/bash -c "$CONTAINER_USER_SETUP
@@ -498,6 +676,7 @@ elif [ "$DEBUG" = true ]; then
         -v \"$MOUNTDIR\":/workspace \
         -v claude-yolo-home:/home-persist \
         -v \"$HOME/.claude:/host-claude:ro\" \
+        $DOCKER_EXTRA_FLAGS_STR \
         -it \
         --rm \
         \"$DOCKER_IMAGE\" \
@@ -509,6 +688,7 @@ elif [ "$DEBUG" = true ]; then
         -v "$MOUNTDIR":/workspace \
         -v claude-yolo-home:/home-persist \
         -v "$HOME/.claude:/host-claude:ro" \
+        "${DOCKER_EXTRA_FLAGS[@]}" \
         -it \
         --rm \
         "$DOCKER_IMAGE" \
@@ -522,6 +702,7 @@ elif [ "$DEBUG" = true ]; then
       -v "$MOUNTDIR":/workspace \
       -v claude-yolo-home:/home-persist \
       -v "$HOME/.claude:/host-claude:ro" \
+      "${DOCKER_EXTRA_FLAGS[@]}" \
       -it \
       --rm \
       "$DOCKER_IMAGE" \
@@ -554,6 +735,7 @@ else
         -v \"$MOUNTDIR\":/workspace \
         -v claude-yolo-home:/home-persist \
         -v \"$HOME/.claude:/host-claude:ro\" \
+        $DOCKER_EXTRA_FLAGS_STR \
         -it \
         --rm \
         \"$DOCKER_IMAGE\" \
@@ -565,6 +747,7 @@ else
         -v "$MOUNTDIR":/workspace \
         -v claude-yolo-home:/home-persist \
         -v "$HOME/.claude:/host-claude:ro" \
+        "${DOCKER_EXTRA_FLAGS[@]}" \
         -it \
         --rm \
         "$DOCKER_IMAGE" \
@@ -576,6 +759,7 @@ else
       -v "$MOUNTDIR":/workspace \
       -v claude-yolo-home:/home-persist \
       -v "$HOME/.claude:/host-claude:ro" \
+      "${DOCKER_EXTRA_FLAGS[@]}" \
       -it \
       --rm \
       "$DOCKER_IMAGE" \
