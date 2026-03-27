@@ -27,7 +27,38 @@ Security issues we're interested in:
 This project intentionally runs Claude Code with `--dangerously-skip-permissions`, which grants Claude full access to the mounted directory. Users should:
 
 1. **Never mount sensitive directories** — Always `cd` to a specific project directory before running `claude-yo`
-2. **Review `.claude-yo.yml` files** — The `run:` directive executes arbitrary commands during image build
-3. **Understand container isolation limits** — The container has network access and can read/write the mounted directory
+2. **Review `.claude-yo.yml` files** — The `run:` directive is validated but executes commands during image build
+3. **Understand container isolation** — The container is network-isolated by default and can only read/write the mounted directory
 
 These are design decisions, not vulnerabilities, but users should understand the trust model before using this tool.
+
+## Security Hardening (v1.2.0)
+
+v1.2.0 addresses findings from a comprehensive 3-layer security review (SECURITY-REVIEW.md):
+
+### Network Isolation (Default)
+- All containers run with `--network=none` by default
+- Use `--network` flag to opt in to internet access when needed
+- Prevents exfiltration of credentials or source code via prompt injection
+
+### Base Image Allowlist
+- Only official Docker Hub images are accepted as custom base images
+- Allowed patterns: `python:*`, `node:*`, `ubuntu:*`, `debian:*`, `alpine:*`, `golang:*`, `rust:*`, `ruby:*`
+- Prevents malicious trojan images from being specified in `.claude-yo.yml`
+
+### Run Directive Filtering
+- `run:` commands are validated against a blocklist of dangerous operations
+- Blocked: network tools (curl, wget, nc), package managers (apt, pip, npm), privilege escalation (sudo, su, chmod, chown)
+- Use the `apt:`, `pip:`, `npm:` sections for package installation instead
+
+### Selective Home Persistence
+- Only `~/.claude/` is persisted across sessions (not the full home directory)
+- Shell init files (`.bashrc`, `.profile`, `.ssh/`) are excluded from persistence
+- Credentials (`.credentials.json`) are deleted before volume save
+
+### Docker Hardening
+- `--cap-drop=ALL` on all container invocations
+- `--security-opt=no-new-privileges` prevents privilege escalation
+- Package names validated against strict regex (`[a-zA-Z0-9._@/+-]+`)
+- Config files copied to temp before validation/use (TOCTOU protection)
+- Log files created with restricted permissions (0700 dirs, 0600 files)

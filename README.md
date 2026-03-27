@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/cadentdev/claude-yolo-docker/actions/workflows/ci.yml/badge.svg)](https://github.com/cadentdev/claude-yolo-docker/actions/workflows/ci.yml)
 
-A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` in isolated environments.
+A Docker wrapper for running Claude Code with `--dangerously-skip-permissions` in isolated, network-restricted containers.
 
 ## What This Does
 
@@ -20,6 +20,7 @@ The `--headless` option enables non-interactive execution without TTY allocation
 ## Features
 
 - **Isolation**: Claude Code runs in a Docker container, not directly on your host
+- **Network Isolation**: Container runs with `--network=none` by default — no internet access, no exfiltration
 - **Directory Mounting**: Only your current directory is accessible to Claude
 - **Persistent Authentication**: Host `~/.claude` credentials shared automatically; also persisted in a Docker volume across projects
 - **User Mapping**: Files created by Claude maintain your user ownership
@@ -73,9 +74,9 @@ npm:
   - typescript
   - eslint
 
-# Custom shell commands (escape hatch for advanced users)
+# Custom shell commands (validated — network/privilege commands blocked)
 run:
-  - "curl -sSL https://install.python-poetry.org | python3 -"
+  - "echo 'Custom setup complete'"
 ```
 
 ### Using a Custom Base Image
@@ -96,13 +97,16 @@ When you specify `base:`, claude-yo will:
 2. Automatically install Claude Code via native installer
 3. Apply your apt/pip/npm/run customizations
 
-**Supported base images**: Any Debian-based image from [Docker Hub Official Images](https://hub.docker.com/search?image_filter=official&q=). Common choices:
-- `node:20-bookworm-slim` - Node.js projects (smaller, no Python)
-- `python:3.11-slim-bookworm` - Different Python version
-- `ruby:3.2-bookworm` - Ruby projects
-- `golang:1.22-bookworm` - Go projects
+**Allowed base images** (validated against an allowlist for security):
+- `python:*` - Python projects (default base)
+- `node:*` - Node.js projects (e.g., `node:20-bookworm-slim`)
+- `ubuntu:*`, `debian:*` - General-purpose
+- `alpine:*` - Minimal images
+- `golang:*` - Go projects
+- `rust:*` - Rust projects
+- `ruby:*` - Ruby projects
 
-Alpine-based images (e.g., `python:3.12-alpine`) are **not supported** due to missing glibc.
+Arbitrary third-party images are not allowed to prevent supply chain attacks via trojan images.
 
 ### How It Works
 
@@ -123,7 +127,7 @@ Alpine-based images (e.g., `python:3.12-alpine`) are **not supported** due to mi
 
 - **Python included by default**: The default image includes Python 3.12, so you can use `pip` directly without adding Python to `apt`
 - **Keep configs in version control**: Commit your `.claude-yo.yml` so team members get the same environment
-- **Use `run` sparingly**: Prefer `apt`, `pip`, and `npm` sections when possible for better caching
+- **Use `run` sparingly**: Prefer `apt`, `pip`, and `npm` sections when possible. The `run:` directive blocks network tools (curl, wget), package managers, and privilege escalation commands for security
 
 ## Prerequisites
 
@@ -302,6 +306,13 @@ The `--debug` flag will:
 - Allow you to explore the container, test commands, or inspect files
 - Save authentication data when you type `exit` to leave
 
+**Enable network access (opt-in):**
+```bash
+claude-yo --network
+```
+
+By default, the container runs with `--network=none` — no internet access. This prevents exfiltration of credentials or source code via prompt injection. Use `--network` when you need the container to download packages or access APIs.
+
 **Enable headless mode (for cron/automation):**
 ```bash
 claude-yo --headless -p "Run the test suite"
@@ -363,6 +374,33 @@ claude-yo --rebuild
 
 This is the recommended way to update Claude Code, as it ensures you're always running the latest version in a clean environment.
 
+## Security Audit Workflow
+
+One of the most compelling uses of claude-yo is sandboxed security auditing of third-party code. The combination of `--dangerously-skip-permissions` (full analytical freedom) and `--network=none` (no exfiltration possible) makes it ideal for reviewing code you don't trust.
+
+```bash
+# Clone an unfamiliar repo
+git clone https://github.com/someone/interesting-tool ~/audit/interesting-tool
+cd ~/audit/interesting-tool
+
+# Run a security audit in a sandboxed container (no network by default)
+claude-yo -p "Perform a comprehensive security audit of this codebase. Check for:
+1. Hardcoded credentials or API keys
+2. Network calls to unexpected domains
+3. File system access outside the project directory
+4. Obfuscated or suspicious code patterns
+5. Supply chain risks in dependencies
+Report findings with severity ratings."
+```
+
+The code being analyzed literally cannot phone home, cannot persist beyond the session, and cannot touch your system. The AI gets maximum analytical freedom inside maximum containment.
+
+For projects that need dependency resolution during analysis, opt in to networking:
+
+```bash
+claude-yo --network -p "Install dependencies and run the full test suite, then audit the codebase"
+```
+
 ## How It Works
 
 1. The wrapper script (`claude-yo`) captures your user ID, group ID, and current directory
@@ -371,11 +409,13 @@ This is the recommended way to update Claude Code, as it ensures you're always r
    - Mounts your current directory to `/workspace`
    - Mounts a persistent Docker volume for authentication data
    - Mounts your host `~/.claude` directory read-only for credential sharing
+   - Runs with `--network=none` by default (no internet access)
+   - Applies `--cap-drop=ALL` and `--security-opt=no-new-privileges`
    - Creates a user inside the container matching your host UID/GID
    - Copies host credentials into the container (if available), with host credentials taking precedence
-   - Restores remaining authentication from previous sessions via the volume
+   - Restores Claude Code state from previous sessions via the volume (only `~/.claude/`, not shell configs)
    - Runs `claude --dangerously-skip-permissions` as that user
-   - Saves authentication data back to the volume when you exit
+   - Deletes credentials and saves only Claude Code state back to the volume when you exit
 
 ## Session Logging
 
