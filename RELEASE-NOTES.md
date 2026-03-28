@@ -1,5 +1,32 @@
 # Release Notes
 
+## v1.2.1 — Security Bugfixes (2026-03-27)
+
+Fixes three blocker bugs in v1.2.0 discovered during real-world testing (security audit of tw93/Mole).
+
+### Bug Fixes
+
+- **`--cap-drop=ALL` blocked container user setup** (#9): The container entrypoint needs `useradd` and `su` to create a matching host user, which require specific Linux capabilities. Fixed by adding back minimum required capabilities: SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER. All other capabilities remain dropped.
+- **Authentication file not mounted** (#10): Claude Code stores auth config at `~/.claude.json` (home root), not inside `~/.claude/` (directory). v1.2.0 only mounted the directory. Fixed by also mounting `~/.claude.json` read-only into the container.
+- **Network isolation blocked API access** (#11): Claude Code requires HTTPS access to `api.anthropic.com`. `--network=none` made the tool non-functional. Both `--network` and `--no-network` flags removed — containers now always have network access. Future versions may implement selective allowlisting (iptables) to permit only API traffic.
+
+### Breaking Changes
+
+- `--network` flag removed (containers always have network access)
+- Network isolation (`--network=none`) is not currently possible — Claude Code requires API connectivity
+
+### Security Notes
+
+The security model remains strong despite these changes:
+- All Linux capabilities still dropped except the 5 required for user setup
+- `--security-opt=no-new-privileges` still enforced
+- Selective home persistence still excludes shell init files
+- Credentials still cleaned before volume save
+- Base image allowlist and run directive filtering unchanged
+- Full network isolation available via `--no-network` for local API setups
+
+---
+
 ## v1.2.0 — Security Hardening (2026-03-27)
 
 Comprehensive security hardening addressing all findings from a 3-layer security review (static analysis, adversarial threat modeling, and structured code review).

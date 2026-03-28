@@ -28,18 +28,17 @@ This project intentionally runs Claude Code with `--dangerously-skip-permissions
 
 1. **Never mount sensitive directories** — Always `cd` to a specific project directory before running `claude-yo`
 2. **Review `.claude-yo.yml` files** — The `run:` directive is validated but executes commands during image build
-3. **Understand container isolation** — The container is network-isolated by default and can only read/write the mounted directory
+3. **Understand container isolation** — The container can only read/write the mounted directory. Network access is required for Claude Code's API calls
 
 These are design decisions, not vulnerabilities, but users should understand the trust model before using this tool.
 
-## Security Hardening (v1.2.0)
+## Security Hardening (v1.2.0, updated v1.2.1)
 
-v1.2.0 addresses findings from a comprehensive 3-layer security review (SECURITY-REVIEW.md):
+v1.2.0 addresses findings from a comprehensive 3-layer security review (SECURITY-REVIEW.md). v1.2.1 fixes three blockers discovered during real-world testing.
 
-### Network Isolation (Default)
-- All containers run with `--network=none` by default
-- Use `--network` flag to opt in to internet access when needed
-- Prevents exfiltration of credentials or source code via prompt injection
+### Network Access
+- Containers have network access (required for Claude Code API calls to `api.anthropic.com`)
+- **Limitation:** `--network=none` is not currently possible because Claude Code requires HTTPS connectivity to Anthropic's servers. A future version may implement iptables-based allowlisting to permit only API traffic while blocking all other outbound connections ([#11](https://github.com/cadentdev/claude-yolo-docker/issues/11))
 
 ### Base Image Allowlist
 - Only official Docker Hub images are accepted as custom base images
@@ -57,7 +56,7 @@ v1.2.0 addresses findings from a comprehensive 3-layer security review (SECURITY
 - Credentials (`.credentials.json`) are deleted before volume save
 
 ### Docker Hardening
-- `--cap-drop=ALL` on all container invocations
+- `--cap-drop=ALL` with minimum cap-adds for container user setup (SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER)
 - `--security-opt=no-new-privileges` prevents privilege escalation
 - Package names validated against strict regex (`[a-zA-Z0-9._@/+-]+`)
 - Config files copied to temp before validation/use (TOCTOU protection)

@@ -2,7 +2,7 @@
 
 # Version number - update this AND create a matching git tag for releases
 # See CLAUDE.md "Versioning" section for details
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 # Parse arguments
 # Wrapper flags are parsed here; all other arguments pass through to Claude Code.
@@ -12,7 +12,6 @@ REBUILD=false
 VERBOSE=false
 DEBUG=false
 HEADLESS=false
-NETWORK=false
 CLAUDE_ARGS=()
 
 for arg in "$@"; do
@@ -31,7 +30,6 @@ for arg in "$@"; do
       echo "  -v, --verbose    Enable verbose mode with full session logging"
       echo "  -d, --debug      Enable debug mode with persistent container shell"
       echo "  --headless       Run without TTY (for cron/automation)"
-      echo "  --network        Enable container network access (default: isolated)"
       echo "  --version        Display version number"
       echo "  -h, --help       Display this help message"
       echo ""
@@ -83,8 +81,10 @@ for arg in "$@"; do
     --headless)
       HEADLESS=true
       ;;
-    --network)
-      NETWORK=true
+    --no-network)
+      echo "Warning: --no-network has been removed. Claude Code requires network access to api.anthropic.com."
+      echo "See https://github.com/cadentdev/claude-yolo-docker/issues/11 for details."
+      exit 1
       ;;
     *)
       # Pass unrecognized arguments to Claude Code
@@ -419,13 +419,14 @@ get_config_hash() {
 # =============================================================================
 
 # Build Docker security flags array
-# Default: network isolated. --network flag enables access.
+# Note: --network=none is not used because Claude Code requires API access to api.anthropic.com.
+# See https://github.com/cadentdev/claude-yolo-docker/issues/11 for discussion of future
+# iptables-based allowlisting that would enable selective network isolation.
 # shellcheck disable=SC2034
 DOCKER_EXTRA_FLAGS=()
-if [ "$NETWORK" = false ]; then
-  DOCKER_EXTRA_FLAGS+=("--network=none")
-fi
-DOCKER_EXTRA_FLAGS+=("--cap-drop=ALL" "--security-opt=no-new-privileges")
+# Drop all capabilities, then add back only those needed for container user setup
+# (useradd/groupadd need CHOWN, DAC_OVERRIDE, FOWNER; su needs SETUID, SETGID)
+DOCKER_EXTRA_FLAGS+=("--cap-drop=ALL" "--cap-add=SETUID" "--cap-add=SETGID" "--cap-add=CHOWN" "--cap-add=DAC_OVERRIDE" "--cap-add=FOWNER" "--security-opt=no-new-privileges")
 
 # String version for use inside script -c commands (where arrays don't work)
 DOCKER_EXTRA_FLAGS_STR="${DOCKER_EXTRA_FLAGS[*]}"
@@ -590,6 +591,12 @@ CONTAINER_USER_SETUP='
     cp /host-claude/.credentials.json /home/$CONTAINER_USER/.claude/
     chown -R '"$USERID"':'"$GROUPID"' /home/$CONTAINER_USER/.claude
   fi
+
+  # Copy host Claude Code config file (auth token lives here, not in .claude/)
+  if [ -f /host-claude-json ]; then
+    cp /host-claude-json /home/$CONTAINER_USER/.claude.json
+    chown '"$USERID"':'"$GROUPID"' /home/$CONTAINER_USER/.claude.json
+  fi
 '
 
 # Container setup banner (shown after user is set up)
@@ -646,6 +653,7 @@ if [ "$HEADLESS" = true ]; then
     -v "$MOUNTDIR":/workspace \
     -v claude-yolo-home:/home-persist \
     -v "$HOME/.claude:/host-claude:ro" \
+    -v "$HOME/.claude.json:/host-claude-json:ro" \
     "${DOCKER_EXTRA_FLAGS[@]}" \
     --rm \
     "$DOCKER_IMAGE" \
@@ -676,6 +684,7 @@ elif [ "$DEBUG" = true ]; then
         -v \"$MOUNTDIR\":/workspace \
         -v claude-yolo-home:/home-persist \
         -v \"$HOME/.claude:/host-claude:ro\" \
+        -v \"$HOME/.claude.json:/host-claude-json:ro\" \
         $DOCKER_EXTRA_FLAGS_STR \
         -it \
         --rm \
@@ -688,6 +697,7 @@ elif [ "$DEBUG" = true ]; then
         -v "$MOUNTDIR":/workspace \
         -v claude-yolo-home:/home-persist \
         -v "$HOME/.claude:/host-claude:ro" \
+        -v "$HOME/.claude.json:/host-claude-json:ro" \
         "${DOCKER_EXTRA_FLAGS[@]}" \
         -it \
         --rm \
@@ -702,6 +712,7 @@ elif [ "$DEBUG" = true ]; then
       -v "$MOUNTDIR":/workspace \
       -v claude-yolo-home:/home-persist \
       -v "$HOME/.claude:/host-claude:ro" \
+      -v "$HOME/.claude.json:/host-claude-json:ro" \
       "${DOCKER_EXTRA_FLAGS[@]}" \
       -it \
       --rm \
@@ -735,6 +746,7 @@ else
         -v \"$MOUNTDIR\":/workspace \
         -v claude-yolo-home:/home-persist \
         -v \"$HOME/.claude:/host-claude:ro\" \
+        -v \"$HOME/.claude.json:/host-claude-json:ro\" \
         $DOCKER_EXTRA_FLAGS_STR \
         -it \
         --rm \
@@ -747,6 +759,7 @@ else
         -v "$MOUNTDIR":/workspace \
         -v claude-yolo-home:/home-persist \
         -v "$HOME/.claude:/host-claude:ro" \
+        -v "$HOME/.claude.json:/host-claude-json:ro" \
         "${DOCKER_EXTRA_FLAGS[@]}" \
         -it \
         --rm \
@@ -759,6 +772,7 @@ else
       -v "$MOUNTDIR":/workspace \
       -v claude-yolo-home:/home-persist \
       -v "$HOME/.claude:/host-claude:ro" \
+      -v "$HOME/.claude.json:/host-claude-json:ro" \
       "${DOCKER_EXTRA_FLAGS[@]}" \
       -it \
       --rm \
