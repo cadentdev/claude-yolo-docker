@@ -12,7 +12,6 @@ REBUILD=false
 VERBOSE=false
 DEBUG=false
 HEADLESS=false
-NETWORK_ISOLATE=false
 CLAUDE_ARGS=()
 
 for arg in "$@"; do
@@ -31,7 +30,6 @@ for arg in "$@"; do
       echo "  -v, --verbose    Enable verbose mode with full session logging"
       echo "  -d, --debug      Enable debug mode with persistent container shell"
       echo "  --headless       Run without TTY (for cron/automation)"
-      echo "  --no-network     Disable container network access (for local/offline use)"
       echo "  --version        Display version number"
       echo "  -h, --help       Display this help message"
       echo ""
@@ -84,7 +82,9 @@ for arg in "$@"; do
       HEADLESS=true
       ;;
     --no-network)
-      NETWORK_ISOLATE=true
+      echo "Warning: --no-network has been removed. Claude Code requires network access to api.anthropic.com."
+      echo "See https://github.com/cadentdev/claude-yolo-docker/issues/11 for details."
+      exit 1
       ;;
     *)
       # Pass unrecognized arguments to Claude Code
@@ -419,12 +419,11 @@ get_config_hash() {
 # =============================================================================
 
 # Build Docker security flags array
-# Default: network isolated. --network flag enables access.
+# Note: --network=none is not used because Claude Code requires API access to api.anthropic.com.
+# See https://github.com/cadentdev/claude-yolo-docker/issues/11 for discussion of future
+# iptables-based allowlisting that would enable selective network isolation.
 # shellcheck disable=SC2034
 DOCKER_EXTRA_FLAGS=()
-if [ "$NETWORK_ISOLATE" = true ]; then
-  DOCKER_EXTRA_FLAGS+=("--network=none")
-fi
 # Drop all capabilities, then add back only those needed for container user setup
 # (useradd/groupadd need CHOWN, DAC_OVERRIDE, FOWNER; su needs SETUID, SETGID)
 DOCKER_EXTRA_FLAGS+=("--cap-drop=ALL" "--cap-add=SETUID" "--cap-add=SETGID" "--cap-add=CHOWN" "--cap-add=DAC_OVERRIDE" "--cap-add=FOWNER" "--security-opt=no-new-privileges")

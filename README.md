@@ -20,7 +20,7 @@ The `--headless` option enables non-interactive execution without TTY allocation
 ## Features
 
 - **Isolation**: Claude Code runs in a Docker container, not directly on your host
-- **Network Isolation**: Use `--no-network` to run with `--network=none` — no internet access, no exfiltration (requires local API endpoint)
+- **Container Hardening**: Capabilities dropped, privilege escalation blocked, selective home persistence
 - **Directory Mounting**: Only your current directory is accessible to Claude
 - **Persistent Authentication**: Host `~/.claude` credentials shared automatically; also persisted in a Docker volume across projects
 - **User Mapping**: Files created by Claude maintain your user ownership
@@ -306,13 +306,6 @@ The `--debug` flag will:
 - Allow you to explore the container, test commands, or inspect files
 - Save authentication data when you type `exit` to leave
 
-**Disable network access (opt-in isolation):**
-```bash
-claude-yo --no-network
-```
-
-By default, the container has network access (required for Claude Code's API calls to `api.anthropic.com`). Use `--no-network` to run with `--network=none` for full network isolation — this requires a local API endpoint or pre-loaded model, since Claude Code cannot reach Anthropic's servers without network access.
-
 **Enable headless mode (for cron/automation):**
 ```bash
 claude-yo --headless -p "Run the test suite"
@@ -395,7 +388,7 @@ Report findings with severity ratings."
 
 The code being analyzed cannot persist beyond the session and cannot touch your system beyond the mounted directory. The AI gets full analytical freedom inside container-level containment.
 
-> **Note on network isolation:** Claude Code requires network access to reach `api.anthropic.com`. Use `--no-network` for full network isolation only if you have a local API endpoint configured. Without it, Claude Code cannot function.
+> **Note on network access:** The container has full network access because Claude Code requires HTTPS connectivity to `api.anthropic.com`. Network isolation (`--network=none`) is not currently possible — see [#11](https://github.com/cadentdev/claude-yolo-docker/issues/11) for future plans around selective allowlisting.
 
 ## How It Works
 
@@ -407,7 +400,7 @@ The code being analyzed cannot persist beyond the session and cannot touch your 
    - Mounts your host `~/.claude` directory read-only for credential sharing
    - Applies `--cap-drop=ALL` with minimum cap-adds for user setup (SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER)
    - Applies `--security-opt=no-new-privileges`
-   - Use `--no-network` for full network isolation (requires local API endpoint)
+   - Network access required (Claude Code needs `api.anthropic.com`)
    - Creates a user inside the container matching your host UID/GID
    - Copies host credentials into the container (if available), with host credentials taking precedence
    - Restores Claude Code state from previous sessions via the volume (only `~/.claude/`, not shell configs)

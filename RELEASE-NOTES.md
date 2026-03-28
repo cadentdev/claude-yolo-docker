@@ -8,12 +8,12 @@ Fixes three blocker bugs in v1.2.0 discovered during real-world testing (securit
 
 - **`--cap-drop=ALL` blocked container user setup** (#9): The container entrypoint needs `useradd` and `su` to create a matching host user, which require specific Linux capabilities. Fixed by adding back minimum required capabilities: SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER. All other capabilities remain dropped.
 - **Authentication file not mounted** (#10): Claude Code stores auth config at `~/.claude.json` (home root), not inside `~/.claude/` (directory). v1.2.0 only mounted the directory. Fixed by also mounting `~/.claude.json` read-only into the container.
-- **Network isolation blocked API access** (#11): Claude Code requires HTTPS access to `api.anthropic.com`. `--network=none` by default made the tool non-functional. Fixed by flipping the default: containers now have network access by default. Use `--no-network` for explicit isolation (requires local API endpoint).
+- **Network isolation blocked API access** (#11): Claude Code requires HTTPS access to `api.anthropic.com`. `--network=none` made the tool non-functional. Both `--network` and `--no-network` flags removed — containers now always have network access. Future versions may implement selective allowlisting (iptables) to permit only API traffic.
 
 ### Breaking Changes
 
-- `--network` flag removed, replaced by `--no-network` (inverted default)
-- Containers now have network access by default (was `--network=none`)
+- `--network` flag removed (containers always have network access)
+- Network isolation (`--network=none`) is not currently possible — Claude Code requires API connectivity
 
 ### Security Notes
 

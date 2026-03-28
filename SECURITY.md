@@ -28,7 +28,7 @@ This project intentionally runs Claude Code with `--dangerously-skip-permissions
 
 1. **Never mount sensitive directories** — Always `cd` to a specific project directory before running `claude-yo`
 2. **Review `.claude-yo.yml` files** — The `run:` directive is validated but executes commands during image build
-3. **Understand container isolation** — The container can only read/write the mounted directory. Use `--no-network` for network isolation (requires local API endpoint)
+3. **Understand container isolation** — The container can only read/write the mounted directory. Network access is required for Claude Code's API calls
 
 These are design decisions, not vulnerabilities, but users should understand the trust model before using this tool.
 
@@ -36,10 +36,9 @@ These are design decisions, not vulnerabilities, but users should understand the
 
 v1.2.0 addresses findings from a comprehensive 3-layer security review (SECURITY-REVIEW.md). v1.2.1 fixes three blockers discovered during real-world testing.
 
-### Network Isolation (Opt-in)
-- Use `--no-network` to run containers with `--network=none` for full network isolation
-- **Limitation:** Claude Code requires HTTPS access to `api.anthropic.com` — full network isolation only works with a local API endpoint
-- Network isolation prevents exfiltration but also prevents Claude Code from functioning without a local API
+### Network Access
+- Containers have network access (required for Claude Code API calls to `api.anthropic.com`)
+- **Limitation:** `--network=none` is not currently possible because Claude Code requires HTTPS connectivity to Anthropic's servers. A future version may implement iptables-based allowlisting to permit only API traffic while blocking all other outbound connections ([#11](https://github.com/cadentdev/claude-yolo-docker/issues/11))
 
 ### Base Image Allowlist
 - Only official Docker Hub images are accepted as custom base images
