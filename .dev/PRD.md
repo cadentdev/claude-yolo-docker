@@ -113,7 +113,16 @@ Block all other outbound traffic. This delivers the security promise: audited co
 - Add tests for iptables rules (when P0 ships)
 - FullRelease workflow must require `smoke-test.sh` pass as a release gate
 
-### P3: Quality of life improvements
+### P3: Node.js upgrade
+
+**Problem:** The base Docker image installs Node.js 20 via NodeSource. Node.js 20 reaches EOL in April 2026. Additionally, the GitHub Actions CI uses `actions/checkout@v4` which runs on Node.js 20 — GitHub will force Node.js 24 starting June 2, 2026.
+
+**Solution:**
+- Update Dockerfile to install Node.js 22 (LTS) or newer via NodeSource
+- Update `.github/workflows/ci.yml` to use `actions/checkout@v5` (or whichever version supports Node.js 24)
+- Verify Claude Code and user projects work with the newer Node.js
+
+### P4: Quality of life improvements
 
 - **Signal handlers:** Ensure home directory save on Ctrl+C in debug mode
 - **`--allow-host <domain>`**: Granular network access for specific use cases
@@ -134,9 +143,9 @@ Block all other outbound traffic. This delivers the security promise: audited co
 
 | Issue | Status | Version | Description |
 |-------|--------|---------|-------------|
-| #9 | Fix in PR #12 | v1.2.1 | --cap-drop=ALL blocks useradd/su |
-| #10 | Fix in PR #12 | v1.2.1 | Auth file (.claude.json) not mounted |
-| #11 | Partial fix in PR #12 | v1.2.1 (flag removed), v1.3.0 (iptables) | Network isolation blocks API |
+| #9 | Closed (v1.2.1) | v1.2.1 | --cap-drop=ALL blocks useradd/su |
+| #10 | Closed (v1.2.1) | v1.2.1 | Auth file (.claude.json) not mounted |
+| #11 | Closed (v1.2.1), iptables deferred to v1.3.0 | v1.2.1 / v1.3.0 | Network isolation blocks API |
 | #2 | Closed (not planned) | — | User config files (conflicts with security model) |
 | #3 | Closed (not planned) | — | Git status check (git excluded by design) |
 
@@ -151,4 +160,5 @@ Block all other outbound traffic. This delivers the security promise: audited co
 | v1.1.2 | 2025-02-17 | Credential docs, version bump |
 | v1.2.0 | 2026-03-27 | Security hardening (10 findings addressed) |
 | v1.2.1 | 2026-03-27 | Bugfix: 3 blockers from v1.2.0 |
-| v1.3.0 | TBD | Selective network isolation, rootless containers, test suite |
+| v1.2.2 | 2026-03-27 | Smoke test suite, project PRD, process validation |
+| v1.3.0 | TBD | Selective network isolation, rootless containers, Node.js upgrade, test suite |
