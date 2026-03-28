@@ -20,7 +20,7 @@ The `--headless` option enables non-interactive execution without TTY allocation
 ## Features
 
 - **Isolation**: Claude Code runs in a Docker container, not directly on your host
-- **Network Isolation**: Container runs with `--network=none` by default — no internet access, no exfiltration
+- **Network Isolation**: Use `--no-network` to run with `--network=none` — no internet access, no exfiltration (requires local API endpoint)
 - **Directory Mounting**: Only your current directory is accessible to Claude
 - **Persistent Authentication**: Host `~/.claude` credentials shared automatically; also persisted in a Docker volume across projects
 - **User Mapping**: Files created by Claude maintain your user ownership
@@ -306,12 +306,12 @@ The `--debug` flag will:
 - Allow you to explore the container, test commands, or inspect files
 - Save authentication data when you type `exit` to leave
 
-**Enable network access (opt-in):**
+**Disable network access (opt-in isolation):**
 ```bash
-claude-yo --network
+claude-yo --no-network
 ```
 
-By default, the container runs with `--network=none` — no internet access. This prevents exfiltration of credentials or source code via prompt injection. Use `--network` when you need the container to download packages or access APIs.
+By default, the container has network access (required for Claude Code's API calls to `api.anthropic.com`). Use `--no-network` to run with `--network=none` for full network isolation — this requires a local API endpoint or pre-loaded model, since Claude Code cannot reach Anthropic's servers without network access.
 
 **Enable headless mode (for cron/automation):**
 ```bash
@@ -376,14 +376,14 @@ This is the recommended way to update Claude Code, as it ensures you're always r
 
 ## Security Audit Workflow
 
-One of the most compelling uses of claude-yo is sandboxed security auditing of third-party code. The combination of `--dangerously-skip-permissions` (full analytical freedom) and `--network=none` (no exfiltration possible) makes it ideal for reviewing code you don't trust.
+One of the most compelling uses of claude-yo is sandboxed security auditing of third-party code. The container drops all Linux capabilities (adding back only the minimum needed for user setup), applies `--security-opt=no-new-privileges`, and restricts filesystem access to only the mounted project directory.
 
 ```bash
 # Clone an unfamiliar repo
 git clone https://github.com/someone/interesting-tool ~/audit/interesting-tool
 cd ~/audit/interesting-tool
 
-# Run a security audit in a sandboxed container (no network by default)
+# Run a security audit in a sandboxed container
 claude-yo -p "Perform a comprehensive security audit of this codebase. Check for:
 1. Hardcoded credentials or API keys
 2. Network calls to unexpected domains
@@ -393,13 +393,9 @@ claude-yo -p "Perform a comprehensive security audit of this codebase. Check for
 Report findings with severity ratings."
 ```
 
-The code being analyzed literally cannot phone home, cannot persist beyond the session, and cannot touch your system. The AI gets maximum analytical freedom inside maximum containment.
+The code being analyzed cannot persist beyond the session and cannot touch your system beyond the mounted directory. The AI gets full analytical freedom inside container-level containment.
 
-For projects that need dependency resolution during analysis, opt in to networking:
-
-```bash
-claude-yo --network -p "Install dependencies and run the full test suite, then audit the codebase"
-```
+> **Note on network isolation:** Claude Code requires network access to reach `api.anthropic.com`. Use `--no-network` for full network isolation only if you have a local API endpoint configured. Without it, Claude Code cannot function.
 
 ## How It Works
 
@@ -409,8 +405,9 @@ claude-yo --network -p "Install dependencies and run the full test suite, then a
    - Mounts your current directory to `/workspace`
    - Mounts a persistent Docker volume for authentication data
    - Mounts your host `~/.claude` directory read-only for credential sharing
-   - Runs with `--network=none` by default (no internet access)
-   - Applies `--cap-drop=ALL` and `--security-opt=no-new-privileges`
+   - Applies `--cap-drop=ALL` with minimum cap-adds for user setup (SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER)
+   - Applies `--security-opt=no-new-privileges`
+   - Use `--no-network` for full network isolation (requires local API endpoint)
    - Creates a user inside the container matching your host UID/GID
    - Copies host credentials into the container (if available), with host credentials taking precedence
    - Restores Claude Code state from previous sessions via the volume (only `~/.claude/`, not shell configs)
