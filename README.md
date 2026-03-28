@@ -553,6 +553,23 @@ This project was built as a learning exercise to understand:
 - User ID mapping between host and container
 - Writing wrapper scripts for Docker workflows
 
+## Testing
+
+Smoke tests verify container startup, authentication, and security flags:
+
+```bash
+# Run all tests (requires Docker + ~/.claude.json for auth tests)
+./tests/smoke-test.sh
+
+# Skip auth tests (for CI or machines without Claude Code credentials)
+./tests/smoke-test.sh --no-auth
+```
+
+Tests are organized in three tiers:
+- **Offline** — flag parsing, version, help (no Docker needed)
+- **Container** — build, user setup, mount points, security flags (Docker needed)
+- **Auth** — headless prompt completion (Docker + Claude Code auth needed)
+
 ## License
 
 MIT

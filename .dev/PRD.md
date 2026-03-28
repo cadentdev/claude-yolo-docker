@@ -99,19 +99,19 @@ Block all other outbound traffic. This delivers the security promise: audited co
 
 **Benefit:** Can truly use `--cap-drop=ALL` with zero cap-adds.
 
-### P2: Test suite
+### P2: Test suite (started)
 
-**Problem:** No automated tests. Both v1.2.0 bugs (cap-drop, auth mounting) would have been caught by basic integration tests.
+**Problem:** No automated tests. All three v1.2.0 bugs would have been caught by basic smoke tests.
 
-**Solution:**
-- Add bats test suite for argument parsing, flag validation, config parsing
-- Add integration tests that actually start containers and verify:
-  - User creation succeeds
-  - Auth files are present
-  - Network rules applied correctly (when P0 ships)
-  - Exit codes propagate
-  - Home persistence works
-- Add CI job to run tests on PR
+**Status:** Smoke test suite shipped in v1.2.1 (`tests/smoke-test.sh`). Three tiers: offline (flag parsing), container (user setup, mounts, security flags), auth (headless prompt). 8 tests, all passing. Pure bash, no external framework.
+
+**Remaining work:**
+- Add CI job to run offline + container tiers on PR (no auth in CI)
+- Add tests for `.claude-yo.yml` config parsing
+- Add tests for exit code propagation
+- Add tests for home persistence (save/restore cycle)
+- Add tests for iptables rules (when P0 ships)
+- FullRelease workflow must require `smoke-test.sh` pass as a release gate
 
 ### P3: Quality of life improvements
 
