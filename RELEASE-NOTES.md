@@ -46,7 +46,7 @@ The security model remains strong despite these changes:
 - Selective home persistence still excludes shell init files
 - Credentials still cleaned before volume save
 - Base image allowlist and run directive filtering unchanged
-- Full network isolation available via `--no-network` for local API setups
+- Network isolation planned for v1.3.0 via iptables allowlisting (#11)
 
 ---
 
