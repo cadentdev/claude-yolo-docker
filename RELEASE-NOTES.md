@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.2.2 — Smoke Tests & Process Validation (2026-03-27)
+
+Adds a local smoke test suite that would have caught all three v1.2.0 blocker bugs before release. This is the process improvement from the v1.2.0/v1.2.1 retrospective.
+
+### Testing
+
+- **Smoke test suite** (`tests/smoke-test.sh`): 8 tests across 3 tiers (offline, container, auth). Pure bash, no external framework. Run with `./tests/smoke-test.sh` or `./tests/smoke-test.sh --no-auth` for CI.
+- Tests verify: flag parsing, container user setup, auth file mounting, security flags, and headless prompt completion.
+- All tests pass on Zorin5 with Docker 28.2.2.
+
+### Documentation
+
+- Added Testing section to README with usage instructions
+- Added project PRD (`.dev/PRD.md`) with v1.3.0 roadmap
+- Updated PRD with smoke test status in P2 (Test Suite)
+
+### Quality
+
+- shellcheck: 0 warnings on both `claude-yo` and `tests/smoke-test.sh`
+- Smoke tests: 8/8 pass (including auth tier)
+
+---
+
 ## v1.2.1 — Security Bugfixes (2026-03-27)
 
 Fixes three blocker bugs in v1.2.0 discovered during real-world testing (security audit of tw93/Mole).
