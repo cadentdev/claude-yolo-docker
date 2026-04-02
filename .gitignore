@@ -16,3 +16,6 @@ Thumbs.db
 
 # Claude Code local settings (personal permissions)
 .claude/settings.local.json
+
+# Temporary files
+tmp/
